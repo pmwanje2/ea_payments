@@ -1,0 +1,258 @@
+Starting test run with parameters: site=p1.localhost, app=ea_payments, verbose=False, tests=(), force=False, profile=False, failfast=False, skip_before_tests=False, debug=False, selected_categories=[]
+View detailed logs (using --verbose): /home/frappe/frappe-bench/logs/frappe.testing.log
+
+Running 36 unspecified-category tests for ea_payments
+
+ea_payments.tests.test_gateways.TestGateways
+    ✔  test_already_paid_request_never_calls_set_as_paid
+    ✔  test_cancelled_request_is_refused
+    ✔  test_duplicate_ipn_calls_native_set_as_paid_exactly_once
+    ✔  test_each_settings_is_single_and_secrets_are_password_fields
+    ✔  test_flutterwave_failed_status_cannot_be_overridden_by_body
+    ✔  test_flutterwave_reuses_pr_as_tx_ref
+    ✔  test_flutterwave_signed_webhook_reverifies_not_body
+    ✔  test_foreign_or_non_payment_request_is_refused
+    ✔  test_integer_ugx_accepts_decimal_zero_representation
+    ✔  test_ipn_poller_race_uses_real_row_lock_and_settles_once
+    ✖  test_malformed_signed_webhook_refuses_without_traceback
+    ✔  test_missing_payment_request_is_refused
+    ✔  test_no_tokens_or_secrets_in_integration_audit
+    ✔  test_non_whole_ugx_order_amount_is_refused
+    ✔  test_on_payment_authorized_compatibility_before_set_as_paid
+    ✔  test_only_ugx_is_accepted
+    ✔  test_pay_001_amount_mismatch_is_audited_and_not_paid
+    ✔  test_pay_001_fractional_provider_amount_is_not_truncated
+    ✔  test_pay_002_currency_mismatch_is_not_paid
+    ✔  test_pay_003_foreign_callback_reference_is_refused
+    ✔  test_pay_003_unknown_tracking_id_does_not_create_a_payment
+    ✔  test_pay_003_verified_foreign_reference_is_not_paid
+    ✔  test_pay_004_bad_or_missing_webhook_signature_has_no_http_or_paid
+    ✔  test_pay_005_before_creating_order_when_sms_absent
+    ✔  test_pay_006_http_error_is_sanitized
+    ✖  test_pesapal_ack_is_top_level_json_not_only_frappe_message
+    ✔  test_pesapal_ipn_never_trusts_callback_status_amount_or_currency
+    ✔  test_pesapal_reuses_one_order_and_stores_registered_ipn
+    ✔  test_phone_success_publishes_native_pos_event_after_commit
+    ✔  test_poller_settles_only_recent_queued_gateway_requests
+    ✔  test_provider_order_uses_server_amount_not_client_amount
+    ✔  test_settings_register_gateways_phone_accounts_and_modes
+    ✖  test_simultaneous_order_requests_return_same_order
+    ✔  test_sms_phone_number_takes_precedence
+    ✔  test_sms_sender_fallback_and_retry_reuse_same_link
+    ✔  test_successful_pesapal_ipn_reverifies_and_completes_native_documents
+
+
+======================================================================
+ ERROR  test_malformed_signed_webhook_refuses_without_traceback (ea_payments.tests.test_gateways.TestGateways.test_malformed_signed_webhook_refuses_without_traceback)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 421, in test_malformed_signed_webhook_refuses_without_traceback
+    self.assertEqual(self.flutterwave.webhook()["code"], "PAY-003")
+                     ~~~~~~~~~~~~~~~~~~~~~~~~^^
+    EnvironBuilder = <class 'werkzeug.test.EnvironBuilder'>
+    Request = <class 'werkzeug.wrappers.request.Request'>
+    body = ['invalid']
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_malformed_signed_webhook_refuses_without_traceback>
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/utils/typing_validations.py", line 36, in wrapper
+    return func(*args, **kwargs)
+    apply_condition = <function _in_request_or_test at 0x76539cf35f30>
+    args = ()
+    func = <function webhook at 0x7653923c7060>
+    kwargs = {}
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/ea_payments/doctype/flutterwave_settings/flutterwave_settings.py", line 47, in webhook
+    reference = (body.get("data") or {}).get("tx_ref")
+                 ^^^^^^^^
+    body = ['invalid']
+    expected = 'demo-hash'
+    incoming = 'demo-hash'
+    settings = <FlutterwaveSettings: doctype=Flutterwave Settings Flutterwave Settings>
+AttributeError: 'list' object has no attribute 'get'
+
+======================================================================
+ ERROR  test_simultaneous_order_requests_return_same_order (ea_payments.tests.test_gateways.TestGateways.test_simultaneous_order_requests_return_same_order)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 272, in sql
+    self.execute_query(query, values)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+    as_dict = False
+    as_iterator = False
+    as_list = 0
+    auto_commit = 0
+    debug = False
+    explain = False
+    ignore_ddl = 0
+    pluck = False
+    query = 'SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`=%(param1)s AND `reference_docname`=%(param2)s AND `integration_request_service`=%(param3)s ORDER BY `creation` DESC LIMIT 1 FOR UPDATE'
+    query_type = 'select'
+    run = True
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x765391895220>
+    trace_id = None
+    update = None
+    values = {'param1': 'Payment Request', 'param2': 'EA-TEST-c11713aa0e', 'param3': 'Pesapal'}
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 372, in execute_query
+    return self._cursor.execute(query, values)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+    query = 'SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`=%(param1)s AND `reference_docname`=%(param2)s AND `integration_request_service`=%(param3)s ORDER BY `creation` DESC LIMIT 1 FOR UPDATE'
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x765391895220>
+    values = {'param1': 'Payment Request', 'param2': 'EA-TEST-c11713aa0e', 'param3': 'Pesapal'}
+  File "/home/frappe/frappe-bench/env/lib/python3.14/site-packages/MySQLdb/cursors.py", line 179, in execute
+    res = self._query(mogrified_query)
+    args = {'param1': 'Payment Request', 'param2': 'EA-TEST-c11713aa0e', 'param3': 'Pesapal'}
+    mogrified_query = b"SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`='Payment Request' AND `reference_docname`='EA-TEST-c11713aa0e' AND `integration_request_service`='Pesapal' ORDER BY `creation` DESC LIMIT 1 FOR UPDATE"
+    query = 'SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`=%(param1)s AND `reference_docname`=%(param2)s AND `integration_request_service`=%(param3)s ORDER BY `creation` DESC LIMIT 1 FOR UPDATE'
+    self = <MySQLdb.cursors.Cursor object at 0x765391894d60>
+  File "/home/frappe/frappe-bench/env/lib/python3.14/site-packages/MySQLdb/cursors.py", line 331, in _query
+    self._do_get_result(db)
+    ~~~~~~~~~~~~~~~~~~~^^^^
+    db = <_mysql.connection closed at 0x765384012c10>
+    q = b"SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`='Payment Request' AND `reference_docname`='EA-TEST-c11713aa0e' AND `integration_request_service`='Pesapal' ORDER BY `creation` DESC LIMIT 1 FOR UPDATE"
+    self = <MySQLdb.cursors.Cursor object at 0x765391894d60>
+  File "/home/frappe/frappe-bench/env/lib/python3.14/site-packages/MySQLdb/cursors.py", line 136, in _do_get_result
+    self._result = result = self._get_result()
+                            ~~~~~~~~~~~~~~~~^^
+    db = <_mysql.connection closed at 0x765384012c10>
+    self = <MySQLdb.cursors.Cursor object at 0x765391894d60>
+  File "/home/frappe/frappe-bench/env/lib/python3.14/site-packages/MySQLdb/cursors.py", line 363, in _get_result
+    return self._get_db().store_result()
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+    self = <MySQLdb.cursors.Cursor object at 0x765391894d60>
+MySQLdb.OperationalError: (1020, "Record has changed since last read in table 'tabIntegration Request'; try restarting transaction")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 444, in test_simultaneous_order_requests_return_same_order
+    urls = [future.result(timeout=40) for future in futures]
+            ~~~~~~~~~~~~~^^^^^^^^^^^^
+    barrier = <threading.Barrier at 0x7653917cead0: waiters=0/2>
+    futures = [<Future at 0x7653917cc050 state=finished raised QueryDeadlockError>, <Future at 0x7653918956e0 state=finished returned str>]
+    pool = <concurrent.futures.thread.ThreadPoolExecutor object at 0x7653917ced50>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_simultaneous_order_requests_return_same_order>
+    site = 'p1.localhost'
+    sites_path = '.'
+    worker = <function TestGateways.test_simultaneous_order_requests_return_same_order.<locals>.worker at 0x765391981900>
+  File "/usr/local/lib/python3.14/concurrent/futures/_base.py", line 454, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+    self = None
+    timeout = 40
+  File "/usr/local/lib/python3.14/concurrent/futures/_base.py", line 396, in __get_result
+    raise self._exception
+    self = None
+  File "/usr/local/lib/python3.14/concurrent/futures/thread.py", line 86, in run
+    result = ctx.run(self.task)
+    ctx = <concurrent.futures.thread.WorkerContext object at 0x7653917cc410>
+    self = None
+  File "/usr/local/lib/python3.14/concurrent/futures/thread.py", line 73, in run
+    return fn(*args, **kwargs)
+    args = ()
+    fn = <function TestGateways.test_simultaneous_order_requests_return_same_order.<locals>.worker at 0x765391981900>
+    kwargs = {}
+    self = <concurrent.futures.thread.WorkerContext object at 0x7653917cc410>
+    task = (<function TestGateways.test_simultaneous_order_requests_return_same_order.<locals>.worker at 0x765391981900>, (), {})
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 435, in worker
+    url = settings.get_payment_url(reference_doctype="Payment Request", reference_docname=self.pr.name,
+        payer_email="guest@example.test", payer_name="Demo Guest")
+    barrier = <threading.Barrier at 0x7653917cead0: waiters=0/2>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_simultaneous_order_requests_return_same_order>
+    settings = <PesapalSettings: doctype=Pesapal Settings Pesapal Settings>
+    site = 'p1.localhost'
+    sites_path = '.'
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/common.py", line 79, in get_payment_url
+    existing = frappe.db.get_value("Integration Request", {
+        "reference_doctype": "Payment Request", "reference_docname": pr.name,
+        "integration_request_service": self.provider,
+    }, "name", for_update=True)
+    amount = 12000
+    kwargs = {'reference_doctype': 'Payment Request', 'reference_docname': 'EA-TEST-c11713aa0e', 'payer_email': 'guest@example.test', 'payer_name': 'Demo Guest'}
+    name = 'EA-TEST-c11713aa0e'
+    pr = <PaymentRequest: doctype=Payment Request EA-TEST-c11713aa0e docstatus=1>
+    self = <PesapalSettings: doctype=Pesapal Settings Pesapal Settings>
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 564, in get_value
+    result = self.get_values(
+    	doctype,
+    ...<13 lines>...
+    	wait=wait,
+    )
+    as_dict = False
+    cache = False
+    debug = False
+    distinct = False
+    doctype = 'Integration Request'
+    fieldname = 'name'
+    filters = {'reference_doctype': 'Payment Request', 'reference_docname': 'EA-TEST-c11713aa0e', 'integration_request_service': 'Pesapal'}
+    for_update = True
+    ignore = False
+    order_by = 'KEEP_DEFAULT_ORDERING'
+    pluck = False
+    run = True
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x765391895220>
+    skip_locked = False
+    wait = True
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 680, in get_values
+    out = query.run(as_dict=as_dict, debug=debug, update=update, run=run, pluck=pluck)
+    as_dict = False
+    cache = False
+    debug = False
+    distinct = False
+    doctype = 'Integration Request'
+    fieldname = 'name'
+    filters = {'reference_doctype': 'Payment Request', 'reference_docname': 'EA-TEST-c11713aa0e', 'integration_request_service': 'Pesapal'}
+    for_update = True
+    ignore = False
+    is_single_doctype = <function is_single_doctype at 0x76539b909f30>
+    limit = 1
+    order_by = 'creation'
+    out = None
+    pluck = False
+    query = SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`='Payment Request' AND `reference_docname`='EA-TEST-c11713aa0e' AND `integration_request_service`='Pesapal' ORDER BY `creation` DESC LIMIT 1 FOR UPDATE
+    run = True
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x765391895220>
+    skip_locked = False
+    update = None
+    wait = True
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/query_builder/utils.py", line 144, in execute_query
+    result = frappe.local.db.sql(query, params, *args, **kwargs)  # nosemgrep
+    args = ()
+    child_queries = []
+    dt = None
+    fields = []
+    kwargs = {'as_dict': False, 'debug': False, 'update': None, 'run': True, 'pluck': False}
+    name_field_injected = False
+    params = {'param1': 'Payment Request', 'param2': 'EA-TEST-c11713aa0e', 'param3': 'Pesapal'}
+    parent_dt = None
+    query = 'SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`=%(param1)s AND `reference_docname`=%(param2)s AND `integration_request_service`=%(param3)s ORDER BY `creation` DESC LIMIT 1 FOR UPDATE'
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 278, in sql
+    raise frappe.QueryDeadlockError(e) from e
+    as_dict = False
+    as_iterator = False
+    as_list = 0
+    auto_commit = 0
+    debug = False
+    explain = False
+    ignore_ddl = 0
+    pluck = False
+    query = 'SELECT `name` FROM `tabIntegration Request` WHERE `reference_doctype`=%(param1)s AND `reference_docname`=%(param2)s AND `integration_request_service`=%(param3)s ORDER BY `creation` DESC LIMIT 1 FOR UPDATE'
+    query_type = 'select'
+    run = True
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x765391895220>
+    trace_id = None
+    update = None
+    values = {'param1': 'Payment Request', 'param2': 'EA-TEST-c11713aa0e', 'param3': 'Pesapal'}
+frappe.exceptions.QueryDeadlockError: (1020, "Record has changed since last read in table 'tabIntegration Request'; try restarting transaction")
+
+======================================================================
+ FAIL  test_pesapal_ack_is_top_level_json_not_only_frappe_message (ea_payments.tests.test_gateways.TestGateways.test_pesapal_ack_is_top_level_json_not_only_frappe_message)
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+Ran 36 tests in 1.621s
+
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 412, in test_pesapal_ack_is_top_level_json_not_only_frappe_message
+    self.assertEqual(frappe.response.get("orderTrackingId"), "TRACK-" + self.pr.name)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pesapal_ack_is_top_level_json_not_only_frappe_message>
+AssertionError: None != 'TRACK-EA-TEST-28efcc7666'
+
+FAILED (failures=1, errors=2)
