@@ -55,7 +55,9 @@ def ipn(OrderTrackingId=None, OrderMerchantReference=None, OrderNotificationType
     else:
         result = reverify(OrderTrackingId, "Pesapal")
     frappe.db.commit()
-    return {"orderNotificationType": OrderNotificationType, "orderTrackingId": OrderTrackingId,
+    ack = {"orderNotificationType": OrderNotificationType, "orderTrackingId": OrderTrackingId,
             "orderMerchantReference": OrderMerchantReference,
             "status": 200 if not result.get("code") else 500,
             **({"code": result["code"]} if result.get("code") else {})}
+    frappe.response.update(ack)
+    return ack

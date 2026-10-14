@@ -71,17 +71,24 @@ class GatewaySettings(Document):
         name = kwargs.get("reference_docname")
         if kwargs.get("reference_doctype") != "Payment Request" or not name or not frappe.db.exists("Payment Request", name):
             frappe.throw("PAY-003: " + MESSAGES["PAY-003"])
-        pr = frappe.get_doc("Payment Request", name, for_update=True)
-        if pr.payment_gateway != self.provider or pr.docstatus == 2 or pr.payment_request_type != "Inward":
-            frappe.throw("PAY-003: " + MESSAGES["PAY-003"])
-        self.validate_transaction_currency(pr.currency)
-        amount = whole_ugx(pr.grand_total)
-        existing = frappe.db.get_value("Integration Request", {
-            "reference_doctype": "Payment Request", "reference_docname": pr.name,
-            "integration_request_service": self.provider,
-        }, "name", for_update=True)
+        for attempt in range(2):
+            try:
+                pr = frappe.get_doc("Payment Request", name, for_update=True)
+                if pr.payment_gateway != self.provider or pr.docstatus == 2 or pr.payment_request_type != "Inward":
+                    frappe.throw("PAY-003: " + MESSAGES["PAY-003"])
+                self.validate_transaction_currency(pr.currency)
+                amount = whole_ugx(pr.grand_total)
+                existing = frappe.db.get_value("Integration Request", {
+                    "reference_doctype": "Payment Request", "reference_docname": pr.name,
+                    "integration_request_service": self.provider,
+                }, "name", for_update=True)
+                break
+            except frappe.QueryDeadlockError:
+                if attempt:
+                    raise
+                frappe.db.rollback()  # No provider request or local write has occurred.
         if existing:
-            return frappe.parse_json(frappe.get_doc("Integration Request", existing).data)["checkout_url"]
+            return frappe.parse_json(frappe.get_doc("Integration Request", existing, for_update=True).data)["checkout_url"]
         order_id, url = self.create_order(pr, amount, kwargs)
         integration = frappe.get_doc({
             "doctype": "Integration Request", "integration_request_service": self.provider,

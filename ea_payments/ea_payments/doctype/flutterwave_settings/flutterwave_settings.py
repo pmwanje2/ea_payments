@@ -44,6 +44,8 @@ def webhook():
     if not expected or not hmac.compare_digest(incoming.encode(), expected.encode()):
         return refuse("PAY-004")
     body = frappe.request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or not isinstance(body.get("data"), dict):
+        return refuse("PAY-003")
     reference = (body.get("data") or {}).get("tx_ref")
     result = reverify(reference, "Flutterwave")
     frappe.db.commit()
