@@ -13,7 +13,7 @@ Scope: approved [#3445 section 6.1](https://github.com/Maximus-Tech-Enterprise-A
 - [Build](build-final.txt): `bench build --app ea_payments` passed.
 - [Gitleaks](gitleaks.txt): 8 implementation/evidence commits scanned, no leaks. The final evidence commit is scanned again before push.
 
-Text captures preserve command output with ANSI styling, carriage returns and trailing whitespace normalized. All provider and SMS HTTP calls were stubbed; credentials and all records are disposable demo data, not provider sandbox transactions.
+Text captures preserve command output with ANSI styling, carriage returns, traceback indentation tabs and trailing whitespace normalized. All provider and SMS HTTP calls were stubbed; credentials and all records are disposable demo data, not provider sandbox transactions.
 
 ## Environment and cleanup
 

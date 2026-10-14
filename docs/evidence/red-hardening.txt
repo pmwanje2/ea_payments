@@ -171,9 +171,9 @@ Traceback (most recent call last):
     self = <PesapalSettings: doctype=Pesapal Settings Pesapal Settings>
   File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 564, in get_value
     result = self.get_values(
-    	doctype,
+        doctype,
     ...<13 lines>...
-    	wait=wait,
+        wait=wait,
     )
     as_dict = False
     cache = False
