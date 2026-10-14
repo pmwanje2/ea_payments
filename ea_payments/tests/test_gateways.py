@@ -381,7 +381,8 @@ class TestGateways(unittest.TestCase):
             calls.append(doc.name)
             return original(doc)
         def worker(poll):
-            with frappe.init_site(site=site, sites_path=sites_path):
+            frappe.init(site=site, sites_path=sites_path)
+            try:
                 frappe.connect()
                 frappe.set_user("Administrator")
                 barrier.wait(timeout=20)
@@ -390,6 +391,8 @@ class TestGateways(unittest.TestCase):
                 else:
                     self.pesapal.ipn(OrderTrackingId=integration.name, OrderMerchantReference=self.pr.name)
                 frappe.db.commit()
+            finally:
+                frappe.destroy()
         try:
             with patch.object(cls, "set_as_paid", paid), ThreadPoolExecutor(max_workers=2) as pool:
                 results = [pool.submit(worker, poll) for poll in (False, True)]

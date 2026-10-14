@@ -1,0 +1,16 @@
+[project]
+name = "ea_payments"
+version = "0.1.0"
+description = "Pesapal and Flutterwave hosted checkout for native Frappe Payment Requests"
+authors = [{name = "pmwanje2"}]
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+
+[build-system]
+requires = ["flit_core>=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=16.0.0,<17.0.0"
+payments = ">=0.0.1"

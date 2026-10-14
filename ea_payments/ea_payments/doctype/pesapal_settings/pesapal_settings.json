@@ -1,0 +1,16 @@
+{
+ "doctype": "DocType",
+ "name": "Pesapal Settings",
+ "module": "EA Payments",
+ "issingle": 1,
+ "engine": "InnoDB",
+ "field_order": ["environment", "consumer_key", "consumer_secret", "ipn_id"],
+ "fields": [
+  {"fieldname": "environment", "fieldtype": "Select", "label": "Environment", "options": "Sandbox\nLive", "default": "Sandbox", "reqd": 1},
+  {"fieldname": "consumer_key", "fieldtype": "Password", "label": "Consumer Key", "reqd": 1},
+  {"fieldname": "consumer_secret", "fieldtype": "Password", "label": "Consumer Secret", "reqd": 1},
+  {"fieldname": "ipn_id", "fieldtype": "Data", "label": "Registered IPN ID", "read_only": 1}
+ ],
+ "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1}],
+ "track_changes": 1
+}
