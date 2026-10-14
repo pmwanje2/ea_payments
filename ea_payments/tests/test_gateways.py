@@ -102,6 +102,8 @@ class TestGateways(unittest.TestCase):
                         "merchant_reference": self.provider_reference or tracking.removeprefix("TRACK-"),
                         "payment_status_code": "", "currency": self.provider_currency,
                         "error": error, "status": "200", "token": "must-not-store"}
+            if code == 0:
+                response["status"] = "500"  # as returned by cybqa for an unpaid order
             if code is None:
                 response = {"error": {"error_type": "api_error", "code": "invalid_api_auth",
                                       "message": "Unauthorized"}, "status": "500"}
