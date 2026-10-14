@@ -1,0 +1,12 @@
+SETTINGS_FORM_LOADED
+SCREENSHOT 01-pesapal-settings-sandbox /desk/ea-payments/pesapal-settings Sandbox
+SCREENSHOT 02-payment-gateway /desk/payments/payment-gateway/Pesapal undefined
+SCREENSHOT 03-phone-mode-of-payment /desk/accounts/mode-of-payment/Pesapal Phone
+SCREENSHOT 04-payment-request-requested /desk/accounts/payment-request/ACC-PRQ-2026-00001 Requested
+GUEST_IPN_HTTP_ACK {"orderNotificationType":"IPNCHANGE","orderTrackingId":"TRACK-ACC-PRQ-2026-00001","orderMerchantReference":"ACC-PRQ-2026-00001","status":200,"message":{"orderNotificationType":"IPNCHANGE","orderTrackingId":"TRACK-ACC-PRQ-2026-00001","orderMerchantReference":"ACC-PRQ-2026-00001","status":200}}
+SCREENSHOT 05-payment-request-paid /desk/accounts/payment-request/ACC-PRQ-2026-00001 Paid
+SCREENSHOT 06-integration-request-completed /desk/integrations/integration-request/TRACK-ACC-PRQ-2026-00001 Completed
+PAY_001_HTTP_ACK {"orderNotificationType":"IPNCHANGE","orderTrackingId":"TRACK-ACC-PRQ-2026-00002","orderMerchantReference":"ACC-PRQ-2026-00002","status":500,"code":"PAY-001","message":{"orderNotificationType":"IPNCHANGE","orderTrackingId":"TRACK-ACC-PRQ-2026-00002","orderMerchantReference":"ACC-PRQ-2026-00002","status":500,"code":"PAY-001"}}
+SCREENSHOT 07-pay-001-refusal /desk/integrations/integration-request/TRACK-ACC-PRQ-2026-00002 Failed
+SCREENSHOT 08-refused-payment-stays-requested /desk/accounts/payment-request/ACC-PRQ-2026-00002 Requested
+TEMP_PROFILE_REMOVED /tmp/p1-ea-payments-chrome-hzOzAt

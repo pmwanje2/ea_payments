@@ -1,0 +1,17 @@
+Linking /home/frappe/frappe-bench/apps/frappe/frappe/public to ./assets/frappe
+Linking /home/frappe/frappe-bench/apps/frappe/node_modules to ./assets/frappe/node_modules
+Linking /home/frappe/frappe-bench/apps/erpnext/erpnext/public to ./assets/erpnext
+Linking /home/frappe/frappe-bench/apps/erpnext/node_modules to ./assets/erpnext/node_modules
+Linking /home/frappe/frappe-bench/env/lib/python3.14/site-packages/payments/public to ./assets/payments
+Linking /home/frappe/frappe-bench/apps/ea_payments/ea_payments/public to ./assets/ea_payments
+✔ Application Assets Linked
+
+
+yarn run v1.22.22
+$ node esbuild --production --apps ea_payments --run-build-command
+File                                                        Size
+
+ DONE  Total Build Time: 88.367ms
+
+Done in 0.75s.
+Compiling translations for ea_payments

@@ -1,0 +1,5 @@
+IPN_ID_AFTER_SAVE ''
+ORDER EA-SBX-cd4df4b0 tracking 5e0a0c8c-e538-4f0d-ba2c-d9c9ca07aa94 redirect_host cybqa.pesapal.com ipn_registered True
+STATUS_RESPONSE {"status_code": 0, "payment_status_description": "INVALID", "amount": 1000.0, "currency": "UGX", "merchant_reference": "EA-SBX-cd4df4b0", "status": "500", "error": {"error_type": "api_error", "code": "payment_details_not_found", "message": "Pending Payment", "call_back_url": "http://p1.localhost/payment-success?OrderTrackingId=5e0a0c8c-e538-4f0d-ba2c-d9c9ca07aa94&OrderMerchantReference=EA-SBX-cd4df4b0"}}
+REVERIFY_RESULT {"status": "Queued"}
+AFTER Queued Requested

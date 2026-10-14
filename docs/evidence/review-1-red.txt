@@ -1,0 +1,591 @@
+Starting test run with parameters: site=p1.localhost, app=ea_payments, verbose=False, tests=(), force=False, profile=False, failfast=False, skip_before_tests=False, debug=False, selected_categories=[]
+View detailed logs (using --verbose): /home/frappe/frappe-bench/logs/frappe.testing.log
+
+Running 41 unspecified-category tests for ea_payments
+
+ea_payments.tests.test_gateways.TestGateways
+    ✖  test_already_paid_request_never_calls_set_as_paid
+    ✖  test_cancelled_request_is_refused
+    ✖  test_duplicate_ipn_calls_native_set_as_paid_exactly_once
+    ✔  test_each_settings_is_single_and_secrets_are_password_fields
+FF    ✖  test_environment_or_credential_change_reregisters_pesapal_ipn
+    ✔  test_flutterwave_failed_status_cannot_be_overridden_by_body
+    ✔  test_flutterwave_reuses_pr_as_tx_ref
+    ✔  test_flutterwave_signed_webhook_reverifies_not_body
+    ✔  test_foreign_or_non_payment_request_is_refused
+    ✖  test_integer_ugx_accepts_decimal_zero_representation
+    ✖  test_ipn_poller_race_uses_real_row_lock_and_settles_once
+    ✔  test_malformed_signed_webhook_refuses_without_traceback
+    ✔  test_missing_payment_request_is_refused
+    ✔  test_no_tokens_or_secrets_in_integration_audit
+    ✔  test_non_whole_ugx_order_amount_is_refused
+    ✖  test_on_payment_authorized_compatibility_before_set_as_paid
+    ✔  test_only_ugx_is_accepted
+    ✖  test_pay_001_amount_mismatch_is_audited_and_not_paid
+    ✖  test_pay_001_fractional_provider_amount_is_not_truncated
+    ✖  test_pay_002_currency_mismatch_is_not_paid
+    ✔  test_pay_003_foreign_callback_reference_is_refused
+    ✔  test_pay_003_unknown_tracking_id_does_not_create_a_payment
+    ✖  test_pay_003_verified_foreign_reference_is_not_paid
+    ✔  test_pay_004_bad_or_missing_webhook_signature_has_no_http_or_paid
+    ✔  test_pay_005_before_creating_order_when_sms_absent
+    ✔  test_pay_006_http_error_is_sanitized
+    ✖  test_pesapal_ack_is_top_level_json_not_only_frappe_message
+    ✖  test_pesapal_completed_status_with_real_error_object_settles
+    ✔  test_pesapal_failed_or_reversed_status_fails_with_code
+    ✔  test_pesapal_ipn_never_trusts_callback_status_amount_or_currency
+    ✖  test_pesapal_pending_status_code_0_stays_queued_for_poller
+    ✔  test_pesapal_reuses_one_order_and_stores_registered_ipn
+    ✔  test_pesapal_status_auth_error_without_status_code_is_pay_006
+    ✖  test_phone_success_publishes_native_pos_event_after_commit
+    ✖  test_poller_settles_only_recent_queued_gateway_requests
+    ✔  test_provider_order_uses_server_amount_not_client_amount
+    ✔  test_settings_register_gateways_phone_accounts_and_modes
+    ✔  test_simultaneous_order_requests_return_same_order
+    ✔  test_sms_phone_number_takes_precedence
+    ✔  test_sms_sender_fallback_and_retry_reuse_same_link
+    ✖  test_successful_pesapal_ipn_reverifies_and_completes_native_documents
+
+
+======================================================================
+ ERROR  test_ipn_poller_race_uses_real_row_lock_and_settles_once (ea_payments.tests.test_gateways.TestGateways.test_ipn_poller_race_uses_real_row_lock_and_settles_once)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/common.py", line 46, in provider_request
+    raise ValueError
+    data = {'payment_method': '', 'amount': 12000, 'created_date': '2026-10-15T10:00:00', 'confirmation_code': '', 'payment_status_description': 'COMPLETED', 'description': '', 'message': 'Request processed successfully', 'payment_account': '', 'call_back_url': 'https://example.test/cb', 'status_code': 1, 'merchant_reference': 'EA-TEST-5802eaf447', 'payment_status_code': '', 'currency': 'UGX', 'error': {'error_type': None, 'code': None, 'message': None, 'call_back_url': 'https://example.test/cb'}, 'status': '200', 'token': 'must-not-store'}
+    kwargs = {'headers': {'Authorization': 'Bearer demo-access-token', 'Content-Type': 'application/json'}, 'params': {'orderTrackingId': 'TRACK-EA-TEST-5802eaf447'}}
+    method = 'GET'
+    response = <ea_payments.tests.test_gateways.TestGateways.http.<locals>.Response object at 0x774e9ddffb60>
+    url = 'https://cybqa.pesapal.com/pesapalv3/api/Transactions/GetTransactionStatus'
+ValueError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/common.py", line 155, in reverify
+    verified = frappe.get_doc(provider + " Settings").verify(integration)
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+    name = 'TRACK-EA-TEST-5802eaf447'
+    provider = 'Pesapal'
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/ea_payments/doctype/pesapal_settings/pesapal_settings.py", line 42, in verify
+    status = provider_request("GET", self.api + "/Transactions/GetTransactionStatus", headers=headers,
+                              params={"orderTrackingId": integration.name})
+    headers = {'Authorization': 'Bearer demo-access-token', 'Content-Type': 'application/json'}
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+    self = <PesapalSettings: doctype=Pesapal Settings Pesapal Settings>
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/common.py", line 50, in provider_request
+    frappe.throw("PAY-006: " + MESSAGES["PAY-006"])
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    data = {'payment_method': '', 'amount': 12000, 'created_date': '2026-10-15T10:00:00', 'confirmation_code': '', 'payment_status_description': 'COMPLETED', 'description': '', 'message': 'Request processed successfully', 'payment_account': '', 'call_back_url': 'https://example.test/cb', 'status_code': 1, 'merchant_reference': 'EA-TEST-5802eaf447', 'payment_status_code': '', 'currency': 'UGX', 'error': {'error_type': None, 'code': None, 'message': None, 'call_back_url': 'https://example.test/cb'}, 'status': '200', 'token': 'must-not-store'}
+    kwargs = {'headers': {'Authorization': 'Bearer demo-access-token', 'Content-Type': 'application/json'}, 'params': {'orderTrackingId': 'TRACK-EA-TEST-5802eaf447'}}
+    method = 'GET'
+    response = <ea_payments.tests.test_gateways.TestGateways.http.<locals>.Response object at 0x774e9ddffb60>
+    url = 'https://cybqa.pesapal.com/pesapalv3/api/Transactions/GetTransactionStatus'
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/utils/messages.py", line 159, in throw
+    msgprint(
+    ~~~~~~~~^
+        msg,
+     ^^^^
+    ...<7 lines>...
+        allow_dangerous_html=allow_dangerous_html,
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+    allow_dangerous_html = False
+    as_list = False
+    exc = <class 'frappe.exceptions.ValidationError'>
+    is_minimizable = False
+    msg = 'PAY-006: Provider could not confirm the payment.'
+    primary_action = None
+    title = None
+    wide = False
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/utils/messages.py", line 118, in msgprint
+    _raise_exception()
+    ~~~~~~~~~~~~~~~~^^
+    _raise_exception = <function msgprint.<locals>._raise_exception at 0x774e9ddfb950>
+    alert = False
+    allow_dangerous_html = False
+    as_list = False
+    as_table = False
+    clean_html = <function clean_html at 0x774ea9537480>
+    indicator = 'red'
+    inspect = <module 'inspect' from '/usr/local/lib/python3.14/inspect.py'>
+    is_minimizable = False
+    msg = 'PAY-006: Provider could not confirm the payment.'
+    out = {'message': 'PAY-006: Provider could not confirm the payment.', 'as_table': False, 'title': 'Message', 'indicator': 'red', 'raise_exception': 1, '__frappe_exc_id': '5aa49797edccd221049bf2ac3821f796cb7e413dc8cefda57a329c1b'}
+    primary_action = None
+    raise_exception = <class 'frappe.exceptions.ValidationError'>
+    realtime = False
+    title = None
+    wide = False
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/utils/messages.py", line 59, in _raise_exception
+    raise exc
+    exc = ValidationError('PAY-006: Provider could not confirm the payment.')
+    inspect = <module 'inspect' from '/usr/local/lib/python3.14/inspect.py'>
+    msg = 'PAY-006: Provider could not confirm the payment.'
+    out = {'message': 'PAY-006: Provider could not confirm the payment.', 'as_table': False, 'title': 'Message', 'indicator': 'red', 'raise_exception': 1, '__frappe_exc_id': '5aa49797edccd221049bf2ac3821f796cb7e413dc8cefda57a329c1b'}
+    raise_exception = <class 'frappe.exceptions.ValidationError'>
+frappe.exceptions.ValidationError: PAY-006: Provider could not confirm the payment.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 272, in sql
+    self.execute_query(query, values)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+    as_dict = True
+    as_iterator = False
+    as_list = 0
+    auto_commit = 0
+    debug = False
+    explain = False
+    ignore_ddl = 0
+    pluck = False
+    query = 'SELECT * FROM `tabIntegration Request` WHERE `name` = %s FOR UPDATE'
+    query_type = 'select'
+    run = True
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x774e9de0ac10>
+    trace_id = None
+    update = None
+    values = ('TRACK-EA-TEST-5802eaf447',)
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 372, in execute_query
+    return self._cursor.execute(query, values)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+    query = 'SELECT * FROM `tabIntegration Request` WHERE `name` = %s FOR UPDATE'
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x774e9de0ac10>
+    values = ('TRACK-EA-TEST-5802eaf447',)
+  File "/home/frappe/frappe-bench/env/lib/python3.14/site-packages/MySQLdb/cursors.py", line 179, in execute
+    res = self._query(mogrified_query)
+    args = ('TRACK-EA-TEST-5802eaf447',)
+    mogrified_query = b"SELECT * FROM `tabIntegration Request` WHERE `name` = 'TRACK-EA-TEST-5802eaf447' FOR UPDATE"
+    query = 'SELECT * FROM `tabIntegration Request` WHERE `name` = %s FOR UPDATE'
+    self = <MySQLdb.cursors.Cursor object at 0x774e9de0b110>
+  File "/home/frappe/frappe-bench/env/lib/python3.14/site-packages/MySQLdb/cursors.py", line 330, in _query
+    db.query(q)
+    ~~~~~~~~^^^
+    db = <_mysql.connection closed at 0x774e90013f10>
+    q = b"SELECT * FROM `tabIntegration Request` WHERE `name` = 'TRACK-EA-TEST-5802eaf447' FOR UPDATE"
+    self = <MySQLdb.cursors.Cursor object at 0x774e9de0b110>
+  File "/home/frappe/frappe-bench/env/lib/python3.14/site-packages/MySQLdb/connections.py", line 280, in query
+    _mysql.connection.query(self, query)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+    query = b"SELECT * FROM `tabIntegration Request` WHERE `name` = 'TRACK-EA-TEST-5802eaf447' FOR UPDATE"
+    self = <_mysql.connection closed at 0x774e90013f10>
+MySQLdb.OperationalError: (1020, "Record has changed since last read in table 'tabIntegration Request'; try restarting transaction")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 463, in test_ipn_poller_race_uses_real_row_lock_and_settles_once
+    result.result(timeout=40)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-5802eaf447'
+    barrier = <threading.Barrier at 0x774e9ddfef90: waiters=0/2>
+    calls = []
+    cls = <class 'erpnext.accounts.doctype.payment_request.payment_request.PaymentRequest'>
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+    original = <function PaymentRequest.set_as_paid at 0x774e9e673ed0>
+    paid = <function TestGateways.test_ipn_poller_race_uses_real_row_lock_and_settles_once.<locals>.paid at 0x774e9ddfafb0>
+    pool = <concurrent.futures.thread.ThreadPoolExecutor object at 0x774e9ddfee40>
+    result = <Future at 0x774e9de0a490 state=finished raised QueryDeadlockError>
+    results = [<Future at 0x774e9ddff380 state=finished returned NoneType>, <Future at 0x774e9de0a490 state=finished raised QueryDeadlockError>]
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_ipn_poller_race_uses_real_row_lock_and_settles_once>
+    site = 'p1.localhost'
+    sites_path = '.'
+    worker = <function TestGateways.test_ipn_poller_race_uses_real_row_lock_and_settles_once.<locals>.worker at 0x774e9ddfae50>
+  File "/usr/local/lib/python3.14/concurrent/futures/_base.py", line 447, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+    self = None
+    timeout = 40
+  File "/usr/local/lib/python3.14/concurrent/futures/_base.py", line 396, in __get_result
+    raise self._exception
+    self = None
+  File "/usr/local/lib/python3.14/concurrent/futures/thread.py", line 86, in run
+    result = ctx.run(self.task)
+    ctx = <concurrent.futures.thread.WorkerContext object at 0x774e9de0a710>
+    self = None
+  File "/usr/local/lib/python3.14/concurrent/futures/thread.py", line 73, in run
+    return fn(*args, **kwargs)
+    args = (True,)
+    fn = <function TestGateways.test_ipn_poller_race_uses_real_row_lock_and_settles_once.<locals>.worker at 0x774e9ddfae50>
+    kwargs = {}
+    self = <concurrent.futures.thread.WorkerContext object at 0x774e9de0a710>
+    task = (<function TestGateways.test_ipn_poller_race_uses_real_row_lock_and_settles_once.<locals>.worker at 0x774e9ddfae50>, (True,), {})
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 453, in worker
+    self.common.poll_queued()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+    barrier = <threading.Barrier at 0x774e9ddfef90: waiters=0/2>
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+    poll = True
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_ipn_poller_race_uses_real_row_lock_and_settles_once>
+    site = 'p1.localhost'
+    sites_path = '.'
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/common.py", line 172, in poll_queued
+    reverify(row.name, row.integration_request_service)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    row = {'name': 'TRACK-EA-TEST-5802eaf447', 'integration_request_service': 'Pesapal'}
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/common.py", line 157, in reverify
+    return refuse("PAY-006", integration)
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+    name = 'TRACK-EA-TEST-5802eaf447'
+    provider = 'Pesapal'
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/common.py", line 26, in refuse
+    integration.db_set({"status": "Failed", "error": message})
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    code = 'PAY-006'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+    message = 'PAY-006: Provider could not confirm the payment.'
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/model/document.py", line 1543, in db_set
+    self.load_doc_before_save()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+    commit = False
+    fieldname = {'status': 'Failed', 'error': 'PAY-006: Provider could not confirm the payment.'}
+    notify = False
+    self = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+    update_modified = True
+    value = None
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/model/document.py", line 1435, in load_doc_before_save
+    self._doc_before_save = frappe.get_doc(self.doctype, self.name, for_update=True)
+                            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    raise_exception = False
+    self = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/model/utils/__init__.py", line 225, in wrapper
+    return dispatch(args[0])(*args, **kw)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+    args = ('Integration Request', 'TRACK-EA-TEST-5802eaf447')
+    dispatch = <function simple_singledispatch.<locals>.dispatch at 0x774ea7fc7060>
+    func = <function get_doc at 0x774ea7fc6fb0>
+    kw = {'for_update': True}
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/model/document.py", line 145, in get_doc_str
+    doc = controller(doctype, name, **kwargs)
+    controller = <class 'frappe.integrations.doctype.integration_request.integration_request.IntegrationRequest'>
+    doctype = 'Integration Request'
+    kwargs = {'for_update': True}
+    name = 'TRACK-EA-TEST-5802eaf447'
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/model/document.py", line 228, in __init__
+    self.load_from_db()
+    ~~~~~~~~~~~~~~~~~^^
+    __class__ = <class 'frappe.model.document.Document'>
+    args = ('Integration Request', 'TRACK-EA-TEST-5802eaf447')
+    first_arg = 'Integration Request'
+    kwargs = {'for_update': True}
+    self = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/model/document.py", line 277, in load_from_db
+    d = frappe.db.sql(
+        "SELECT * FROM {table_name} WHERE `name` = %s {for_update}".format(
+    ...<4 lines>...
+        as_dict=True,
+    )
+    __class__ = <class 'frappe.model.document.Document'>
+    for_update = 'FOR UPDATE'
+    is_doctype = False
+    self = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-5802eaf447>
+  File "/home/frappe/frappe-bench/apps/frappe/frappe/database/database.py", line 278, in sql
+    raise frappe.QueryDeadlockError(e) from e
+    as_dict = True
+    as_iterator = False
+    as_list = 0
+    auto_commit = 0
+    debug = False
+    explain = False
+    ignore_ddl = 0
+    pluck = False
+    query = 'SELECT * FROM `tabIntegration Request` WHERE `name` = %s FOR UPDATE'
+    query_type = 'select'
+    run = True
+    self = <frappe.database.mariadb.mysqlclient.MariaDBDatabase object at 0x774e9de0ac10>
+    trace_id = None
+    update = None
+    values = ('TRACK-EA-TEST-5802eaf447',)
+frappe.exceptions.QueryDeadlockError: (1020, "Record has changed since last read in table 'tabIntegration Request'; try restarting transaction")
+
+======================================================================
+ ERROR  test_phone_success_publishes_native_pos_event_after_commit (ea_payments.tests.test_gateways.TestGateways.test_phone_success_publishes_native_pos_event_after_commit)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 415, in test_phone_success_publishes_native_pos_event_after_commit
+    self.assertEqual(kwargs["event"], "process_phone_payment")
+                     ~~~~~~^^^^^^^^^
+    kwargs = {'after_commit': True}
+    publish = <MagicMock name='publish_realtime' id='131179538772192'>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_phone_success_publishes_native_pos_event_after_commit>
+KeyError: 'event'
+
+======================================================================
+ FAIL  test_already_paid_request_never_calls_set_as_paid (ea_payments.tests.test_gateways.TestGateways.test_already_paid_request_never_calls_set_as_paid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 403, in test_already_paid_request_never_calls_set_as_paid
+    self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Completed")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-9fe42ca706'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-9fe42ca706>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_already_paid_request_never_calls_set_as_paid>
+AssertionError: 'Failed' != 'Completed'
+- Failed
++ Completed
+
+
+======================================================================
+ FAIL  test_cancelled_request_is_refused (ea_payments.tests.test_gateways.TestGateways.test_cancelled_request_is_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 409, in test_cancelled_request_is_refused
+    self.assertEqual(result["code"], "PAY-003")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-b157bcb1fd'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-b157bcb1fd>
+    result = {'orderNotificationType': 'IPNCHANGE', 'orderTrackingId': 'TRACK-EA-TEST-b157bcb1fd', 'orderMerchantReference': 'EA-TEST-b157bcb1fd', 'status': 500, 'code': 'PAY-006'}
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_cancelled_request_is_refused>
+AssertionError: 'PAY-006' != 'PAY-003'
+- PAY-006
+?       ^
++ PAY-003
+?       ^
+
+
+======================================================================
+ FAIL  test_duplicate_ipn_calls_native_set_as_paid_exactly_once (ea_payments.tests.test_gateways.TestGateways.test_duplicate_ipn_calls_native_set_as_paid_exactly_once)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 382, in test_duplicate_ipn_calls_native_set_as_paid_exactly_once
+    self.assertEqual(calls, [self.pr.name])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-445e8f9eb6'
+    calls = []
+    cls = <class 'erpnext.accounts.doctype.payment_request.payment_request.PaymentRequest'>
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-445e8f9eb6>
+    original = <function PaymentRequest.set_as_paid at 0x774e9e673ed0>
+    paid = <function TestGateways.test_duplicate_ipn_calls_native_set_as_paid_exactly_once.<locals>.paid at 0x774e9ddf89e0>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_duplicate_ipn_calls_native_set_as_paid_exactly_once>
+AssertionError: Lists differ: [] != ['EA-TEST-445e8f9eb6']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'EA-TEST-445e8f9eb6'
+
+- []
++ ['EA-TEST-445e8f9eb6']
+
+======================================================================
+ FAIL  test_environment_or_credential_change_reregisters_pesapal_ipn (ea_payments.tests.test_gateways.TestGateways.test_environment_or_credential_change_reregisters_pesapal_ipn) (change={'environment': 'Live'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 288, in test_environment_or_credential_change_reregisters_pesapal_ipn
+    self.assertFalse(frappe.db.get_single_value("Pesapal Settings", "ipn_id"))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    change = {'environment': 'Live'}
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_environment_or_credential_change_reregisters_pesapal_ipn>
+    settings = <PesapalSettings: doctype=Pesapal Settings Pesapal Settings>
+AssertionError: 'old-ipn' is not false
+
+======================================================================
+ FAIL  test_environment_or_credential_change_reregisters_pesapal_ipn (ea_payments.tests.test_gateways.TestGateways.test_environment_or_credential_change_reregisters_pesapal_ipn) (change={'consumer_key': 'rotated-demo-key'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 288, in test_environment_or_credential_change_reregisters_pesapal_ipn
+    self.assertFalse(frappe.db.get_single_value("Pesapal Settings", "ipn_id"))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    change = {'consumer_key': 'rotated-demo-key'}
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_environment_or_credential_change_reregisters_pesapal_ipn>
+    settings = <PesapalSettings: doctype=Pesapal Settings Pesapal Settings>
+AssertionError: 'old-ipn' is not false
+
+======================================================================
+ FAIL  test_environment_or_credential_change_reregisters_pesapal_ipn (ea_payments.tests.test_gateways.TestGateways.test_environment_or_credential_change_reregisters_pesapal_ipn)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 291, in test_environment_or_credential_change_reregisters_pesapal_ipn
+    self.assertEqual(sum(c[1].endswith("RegisterIPN") for c in self.http_calls), registrations + 1)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    change = {'consumer_key': 'rotated-demo-key'}
+    registrations = 1
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_environment_or_credential_change_reregisters_pesapal_ipn>
+    settings = <PesapalSettings: doctype=Pesapal Settings Pesapal Settings>
+AssertionError: 1 != 2
+
+======================================================================
+ FAIL  test_integer_ugx_accepts_decimal_zero_representation (ea_payments.tests.test_gateways.TestGateways.test_integer_ugx_accepts_decimal_zero_representation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 320, in test_integer_ugx_accepts_decimal_zero_representation
+    self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Paid")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_integer_ugx_accepts_decimal_zero_representation>
+AssertionError: 'Requested' != 'Paid'
+- Requested
++ Paid
+
+
+======================================================================
+ FAIL  test_on_payment_authorized_compatibility_before_set_as_paid (ea_payments.tests.test_gateways.TestGateways.test_on_payment_authorized_compatibility_before_set_as_paid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 396, in test_on_payment_authorized_compatibility_before_set_as_paid
+    self.assertEqual(calls, [("authorized", "Completed"), ("paid", self.pr.name)])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-75019d8fbf'
+    authorized = <function TestGateways.test_on_payment_authorized_compatibility_before_set_as_paid.<locals>.authorized at 0x774e9df3f7f0>
+    calls = []
+    cls = <class 'erpnext.accounts.doctype.payment_request.payment_request.PaymentRequest'>
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-75019d8fbf>
+    original = <function PaymentRequest.set_as_paid at 0x774e9e673ed0>
+    paid = <function TestGateways.test_on_payment_authorized_compatibility_before_set_as_paid.<locals>.paid at 0x774e9df3f480>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_on_payment_authorized_compatibility_before_set_as_paid>
+AssertionError: Lists differ: [] != [('authorized', 'Completed'), ('paid', 'EA-TEST-75019d8fbf')]
+
+Second list contains 2 additional elements.
+First extra element 0:
+('authorized', 'Completed')
+
+- []
++ [('authorized', 'Completed'), ('paid', 'EA-TEST-75019d8fbf')]
+
+======================================================================
+ FAIL  test_pay_001_amount_mismatch_is_audited_and_not_paid (ea_payments.tests.test_gateways.TestGateways.test_pay_001_amount_mismatch_is_audited_and_not_paid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 309, in test_pay_001_amount_mismatch_is_audited_and_not_paid
+    self.assert_unpaid("PAY-001", integration)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-dbcf434d43'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-dbcf434d43>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_001_amount_mismatch_is_audited_and_not_paid>
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 147, in assert_unpaid
+    self.assertIn(code, integration.error)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+    code = 'PAY-001'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-dbcf434d43>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_001_amount_mismatch_is_audited_and_not_paid>
+AssertionError: 'PAY-001' not found in 'PAY-006: Provider could not confirm the payment.'
+
+======================================================================
+ FAIL  test_pay_001_fractional_provider_amount_is_not_truncated (ea_payments.tests.test_gateways.TestGateways.test_pay_001_fractional_provider_amount_is_not_truncated)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 315, in test_pay_001_fractional_provider_amount_is_not_truncated
+    self.assert_unpaid("PAY-001", integration)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-be5eb47ea0'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-be5eb47ea0>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_001_fractional_provider_amount_is_not_truncated>
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 147, in assert_unpaid
+    self.assertIn(code, integration.error)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+    code = 'PAY-001'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-be5eb47ea0>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_001_fractional_provider_amount_is_not_truncated>
+AssertionError: 'PAY-001' not found in 'PAY-006: Provider could not confirm the payment.'
+
+======================================================================
+ FAIL  test_pay_002_currency_mismatch_is_not_paid (ea_payments.tests.test_gateways.TestGateways.test_pay_002_currency_mismatch_is_not_paid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 326, in test_pay_002_currency_mismatch_is_not_paid
+    self.assert_unpaid("PAY-002", integration)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-c1dfc40236'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-c1dfc40236>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_002_currency_mismatch_is_not_paid>
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 147, in assert_unpaid
+    self.assertIn(code, integration.error)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+    code = 'PAY-002'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-c1dfc40236>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_002_currency_mismatch_is_not_paid>
+AssertionError: 'PAY-002' not found in 'PAY-006: Provider could not confirm the payment.'
+
+======================================================================
+ FAIL  test_pay_003_verified_foreign_reference_is_not_paid (ea_payments.tests.test_gateways.TestGateways.test_pay_003_verified_foreign_reference_is_not_paid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 332, in test_pay_003_verified_foreign_reference_is_not_paid
+    self.assert_unpaid("PAY-003", integration)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-a6b48caeb0'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-a6b48caeb0>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_003_verified_foreign_reference_is_not_paid>
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 147, in assert_unpaid
+    self.assertIn(code, integration.error)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+    code = 'PAY-003'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-a6b48caeb0>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pay_003_verified_foreign_reference_is_not_paid>
+AssertionError: 'PAY-003' not found in 'PAY-006: Provider could not confirm the payment.'
+
+======================================================================
+ FAIL  test_pesapal_ack_is_top_level_json_not_only_frappe_message (ea_payments.tests.test_gateways.TestGateways.test_pesapal_ack_is_top_level_json_not_only_frappe_message)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 475, in test_pesapal_ack_is_top_level_json_not_only_frappe_message
+    self.assertEqual(frappe.response.get("status"), 200)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pesapal_ack_is_top_level_json_not_only_frappe_message>
+AssertionError: 500 != 200
+
+======================================================================
+ FAIL  test_pesapal_completed_status_with_real_error_object_settles (ea_payments.tests.test_gateways.TestGateways.test_pesapal_completed_status_with_real_error_object_settles)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 249, in test_pesapal_completed_status_with_real_error_object_settles
+    self.assertEqual(result["status"], 200)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+    result = {'orderNotificationType': 'IPNCHANGE', 'orderTrackingId': 'TRACK-EA-TEST-693e55d65b', 'orderMerchantReference': 'EA-TEST-693e55d65b', 'status': 500, 'code': 'PAY-006'}
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pesapal_completed_status_with_real_error_object_settles>
+AssertionError: 500 != 200
+
+======================================================================
+ FAIL  test_pesapal_pending_status_code_0_stays_queued_for_poller (ea_payments.tests.test_gateways.TestGateways.test_pesapal_pending_status_code_0_stays_queued_for_poller)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 256, in test_pesapal_pending_status_code_0_stays_queued_for_poller
+    self.assertEqual((result["status"], result.get("code")), (200, None))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-e3b7c7389e'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-e3b7c7389e>
+    result = {'orderNotificationType': 'IPNCHANGE', 'orderTrackingId': 'TRACK-EA-TEST-e3b7c7389e', 'orderMerchantReference': 'EA-TEST-e3b7c7389e', 'status': 500, 'code': 'PAY-006'}
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_pesapal_pending_status_code_0_stays_queued_for_poller>
+AssertionError: Tuples differ: (500, 'PAY-006') != (200, None)
+
+First differing element 0:
+500
+200
+
+- (500, 'PAY-006')
++ (200, None)
+
+======================================================================
+ FAIL  test_poller_settles_only_recent_queued_gateway_requests (ea_payments.tests.test_gateways.TestGateways.test_poller_settles_only_recent_queued_gateway_requests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 428, in test_poller_settles_only_recent_queued_gateway_requests
+    self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Paid")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    _ = 'https://cybqa.pesapal.com/pay/EA-TEST-c939f24dd9'
+    integration = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-b1f5158af4>
+    old = <PaymentRequest: doctype=Payment Request EA-TEST-c939f24dd9 docstatus=1>
+    old_ir = <IntegrationRequest: doctype=Integration Request TRACK-EA-TEST-c939f24dd9>
+    other = <IntegrationRequest: doctype=Integration Request tahhqqn39u>
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_poller_settles_only_recent_queued_gateway_requests>
+AssertionError: 'Requested' != 'Paid'
+- Requested
++ Paid
+
+
+======================================================================
+ FAIL  test_successful_pesapal_ipn_reverifies_and_completes_native_documents (ea_payments.tests.test_gateways.TestGateways.test_successful_pesapal_ipn_reverifies_and_completes_native_documents)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/frappe/frappe-bench/apps/ea_payments/ea_payments/tests/test_gateways.py", line 236, in test_successful_pesapal_ipn_reverifies_and_completes_native_documents
+    self.assertEqual(result["status"], 200)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+    result = {'orderNotificationType': 'IPNCHANGE', 'orderTrackingId': 'TRACK-EA-TEST-719334484d', 'orderMerchantReference': 'EA-TEST-719334484d', 'status': 500, 'code': 'PAY-006'}
+    self = <ea_payments.tests.test_gateways.TestGateways testMethod=test_successful_pesapal_ipn_reverifies_and_completes_native_documents>
+AssertionError: 500 != 200
+
+----------------------------------------------------------------------
+Ran 41 tests in 2.616s
+
+FAILED (failures=17, errors=2)

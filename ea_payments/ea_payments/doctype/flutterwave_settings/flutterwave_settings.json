@@ -1,0 +1,15 @@
+{
+ "doctype": "DocType",
+ "name": "Flutterwave Settings",
+ "module": "EA Payments",
+ "issingle": 1,
+ "engine": "InnoDB",
+ "field_order": ["environment", "secret_key", "webhook_secret_hash"],
+ "fields": [
+  {"fieldname": "environment", "fieldtype": "Select", "label": "Environment", "options": "Sandbox\nLive", "default": "Sandbox", "reqd": 1},
+  {"fieldname": "secret_key", "fieldtype": "Password", "label": "Secret Key", "reqd": 1},
+  {"fieldname": "webhook_secret_hash", "fieldtype": "Password", "label": "Webhook Secret Hash", "reqd": 1}
+ ],
+ "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1}],
+ "track_changes": 1
+}
