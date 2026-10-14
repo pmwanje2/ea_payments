@@ -87,11 +87,24 @@ class TestGateways(unittest.TestCase):
                         "status": "200", "error": None, "token": "must-not-store"}
         elif url.endswith("Transactions/GetTransactionStatus"):
             tracking = kwargs["params"]["orderTrackingId"]
-            response = {"payment_status_description": "Completed" if self.provider_status == "success" else self.provider_status,
-                        "status_code": 1 if self.provider_status == "success" else 2,
+            # Real API 3.0 shape: HTTP 200 with an error object even when processed
+            # (sandbox and published sample); pending carries payment_details_not_found.
+            code, description = {"success": (1, "COMPLETED"), "pending": (0, "INVALID"),
+                                 "FAILED": (2, "FAILED"), "REVERSED": (3, "REVERSED")}.get(self.provider_status, (None, None))
+            error = {"error_type": None, "code": None, "message": None, "call_back_url": "https://example.test/cb"}
+            if code == 0:
+                error = {"error_type": "api_error", "code": "payment_details_not_found",
+                         "message": "Pending Payment", "call_back_url": "https://example.test/cb"}
+            response = {"payment_method": "", "amount": self.provider_amount, "created_date": "2026-10-15T10:00:00",
+                        "confirmation_code": "", "payment_status_description": description,
+                        "description": "", "message": "Request processed successfully",
+                        "payment_account": "", "call_back_url": "https://example.test/cb", "status_code": code,
                         "merchant_reference": self.provider_reference or tracking.removeprefix("TRACK-"),
-                        "amount": self.provider_amount, "currency": self.provider_currency,
-                        "status": "200", "error": None, "token": "must-not-store"}
+                        "payment_status_code": "", "currency": self.provider_currency,
+                        "error": error, "status": "200", "token": "must-not-store"}
+            if code is None:
+                response = {"error": {"error_type": "api_error", "code": "invalid_api_auth",
+                                      "message": "Unauthorized"}, "status": "500"}
         elif url.endswith("/payments"):
             response = {"status": "success", "data": {"link": "https://checkout.flutterwave.com/" + payload["tx_ref"]}}
         elif "/transactions/" in url:
@@ -230,6 +243,54 @@ class TestGateways(unittest.TestCase):
         self.provider_status = "FAILED"
         self.ipn(status_code=1, amount=12000, currency="UGX")
         self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+
+    def test_pesapal_completed_status_with_real_error_object_settles(self):
+        result = self.ipn()
+        self.assertEqual(result["status"], 200)
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Paid")
+
+    def test_pesapal_pending_status_code_0_stays_queued_for_poller(self):
+        _, integration, _ = self.order()
+        self.provider_status = "pending"
+        result = self.ipn(integration)
+        self.assertEqual((result["status"], result.get("code")), (200, None))
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Queued")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+        self.provider_status = "success"
+        self.common.poll_queued()
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Paid")
+
+    def test_pesapal_failed_or_reversed_status_fails_with_code(self):
+        for status in ("FAILED", "REVERSED"):
+            with self.subTest(status=status):
+                self.pr = self.make_pr()
+                _, integration, _ = self.order()
+                self.provider_status = status
+                self.ipn(integration)
+                self.assert_unpaid("PAY-006", integration)
+
+    def test_pesapal_status_auth_error_without_status_code_is_pay_006(self):
+        _, integration, _ = self.order()
+        self.provider_status = "auth-error"
+        self.ipn(integration)
+        self.assert_unpaid("PAY-006", integration)
+
+    def test_environment_or_credential_change_reregisters_pesapal_ipn(self):
+        self.order()
+        frappe.get_doc("Pesapal Settings").save(ignore_permissions=True)
+        self.assertEqual(frappe.db.get_single_value("Pesapal Settings", "ipn_id"), "demo-ipn")
+        for change in ({"environment": "Live"}, {"consumer_key": "rotated-demo-key"}):
+            with self.subTest(change=change):
+                frappe.db.set_single_value("Pesapal Settings", "ipn_id", "old-ipn")
+                settings = frappe.get_doc("Pesapal Settings")
+                settings.update(change)
+                settings.save(ignore_permissions=True)
+                self.assertFalse(frappe.db.get_single_value("Pesapal Settings", "ipn_id"))
+        registrations = sum(c[1].endswith("RegisterIPN") for c in self.http_calls)
+        self.order(pr=self.make_pr())
+        self.assertEqual(sum(c[1].endswith("RegisterIPN") for c in self.http_calls), registrations + 1)
+        self.assertIn("https://pay.pesapal.com/v3/api/URLSetup/RegisterIPN", [c[1] for c in self.http_calls])
+        self.assertEqual(frappe.db.get_single_value("Pesapal Settings", "ipn_id"), "demo-ipn")
 
     def test_flutterwave_signed_webhook_reverifies_not_body(self):
         self.webhook(amount=1, currency="USD", status="failed")
