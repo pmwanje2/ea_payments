@@ -37,12 +37,14 @@ def whole_ugx(value):
         frappe.throw("PAY-001: " + MESSAGES["PAY-001"])
 
 
-def provider_request(method, url, **kwargs):
+def provider_request(method, url, check_error=True, **kwargs):
+    """check_error=False: caller decides from the body (Pesapal status always carries an error object)."""
     try:
         response = requests.request(method, url, timeout=20, **kwargs)
         response.raise_for_status()
         data = response.json()
-        if not isinstance(data, dict) or data.get("error") or data.get("status") in ("error", "failed"):
+        if not isinstance(data, dict) or (check_error and (
+                data.get("error") or data.get("status") in ("error", "failed"))):
             raise ValueError
         return data
     except Exception:

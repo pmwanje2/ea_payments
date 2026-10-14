@@ -9,6 +9,11 @@ CALLBACK = "/api/method/ea_payments.ea_payments.doctype.pesapal_settings.pesapal
 class PesapalSettings(GatewaySettings):
     provider = "Pesapal"
 
+    def validate(self):
+        # The registered IPN id belongs to one environment and merchant.
+        if any(self.has_value_changed(f) for f in ("environment", "consumer_key", "consumer_secret")):
+            self.ipn_id = ""
+
     def headers(self):
         self.api = ("https://cybqa.pesapal.com/pesapalv3/api" if self.environment == "Sandbox"
                     else "https://pay.pesapal.com/v3/api")
@@ -40,9 +45,12 @@ class PesapalSettings(GatewaySettings):
     def verify(self, integration):
         headers = self.headers()
         status = provider_request("GET", self.api + "/Transactions/GetTransactionStatus", headers=headers,
-                                  params={"orderTrackingId": integration.name})
-        return {"success": status.get("status_code") == 1,
-                "pending": status.get("status_code") == 0,
+                                  params={"orderTrackingId": integration.name}, check_error=False)
+        # 0 INVALID/pending -> stay Queued, 1 COMPLETED, 2 FAILED, 3 REVERSED; else transport/auth error.
+        code = status.get("status_code")
+        if code not in (0, 1, 2, 3):
+            frappe.throw("PAY-006: " + MESSAGES["PAY-006"])
+        return {"success": code == 1, "pending": code == 0,
                 "amount": status.get("amount"), "currency": status.get("currency"),
                 "reference": status.get("merchant_reference")}
 

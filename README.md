@@ -21,8 +21,11 @@ Allow public callbacks only at:
 Both callbacks re-query the provider before settlement. Flutterwave additionally
 requires its configured `verif-hash`. Configure the site's public `host_name` and
 enable the scheduler: queued requests younger than 24 hours are checked every
-five minutes. Pesapal's IPN registration is saved when the first order is made;
-re-register it when changing environment or public hostname.
+five minutes. Pesapal's IPN registration is saved when the first order is made.
+Changing Environment or either credential clears it, so the next order registers
+a new IPN; after changing the public hostname, re-enter the consumer secret.
+Pesapal status is decided by `status_code` (its response always carries an
+`error` object): 0 stays Queued for the poller, 1 settles, 2/3 fail as PAY-006.
 
 Stable refusals: PAY-001 amount, PAY-002 currency, PAY-003 reference,
 PAY-004 signature, PAY-005 SMS gateway absent, PAY-006 provider error.
