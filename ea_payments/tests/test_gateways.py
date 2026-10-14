@@ -405,7 +405,6 @@ class TestGateways(unittest.TestCase):
             frappe.db.delete("Integration Request", {"name": integration.name})
             frappe.db.delete("Payment Request", {"name": self.pr.name})
             frappe.db.commit()
-
     def test_pesapal_ack_is_top_level_json_not_only_frappe_message(self):
         frappe.local.response = frappe._dict({"type": "json"})
         self.ipn()
