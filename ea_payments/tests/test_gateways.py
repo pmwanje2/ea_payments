@@ -405,3 +405,47 @@ class TestGateways(unittest.TestCase):
             frappe.db.delete("Integration Request", {"name": integration.name})
             frappe.db.delete("Payment Request", {"name": self.pr.name})
             frappe.db.commit()
+
+    def test_pesapal_ack_is_top_level_json_not_only_frappe_message(self):
+        frappe.local.response = frappe._dict({"type": "json"})
+        self.ipn()
+        self.assertEqual(frappe.response.get("orderTrackingId"), "TRACK-" + self.pr.name)
+        self.assertEqual(frappe.response.get("status"), 200)
+
+    def test_malformed_signed_webhook_refuses_without_traceback(self):
+        from werkzeug.test import EnvironBuilder
+        from werkzeug.wrappers import Request
+        for body in (["invalid"], {"data": ["invalid"]}):
+            with patch.object(frappe.local, "request", Request(EnvironBuilder(
+                method="POST", json=body, headers={"verif-hash": "demo-hash"}).get_environ()), create=True):
+                self.assertEqual(self.flutterwave.webhook()["code"], "PAY-003")
+
+    def test_simultaneous_order_requests_return_same_order(self):
+        frappe.db.commit()
+        site = frappe.local.site
+        sites_path = frappe.local.sites_path
+        barrier = threading.Barrier(2)
+        def worker():
+            frappe.init(site=site, sites_path=sites_path)
+            try:
+                frappe.connect()
+                frappe.set_user("Administrator")
+                settings = frappe.get_doc("Pesapal Settings")
+                barrier.wait(timeout=20)
+                url = settings.get_payment_url(reference_doctype="Payment Request", reference_docname=self.pr.name,
+                    payer_email="guest@example.test", payer_name="Demo Guest")
+                frappe.db.commit()
+                return url
+            finally:
+                frappe.destroy()
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(worker) for _ in range(2)]
+                urls = [future.result(timeout=40) for future in futures]
+            self.assertEqual(urls[0], urls[1])
+            self.assertEqual(sum(c[1].endswith("SubmitOrderRequest") for c in self.http_calls), 1)
+        finally:
+            frappe.db.rollback()
+            frappe.db.delete("Integration Request", {"reference_docname": self.pr.name})
+            frappe.db.delete("Payment Request", {"name": self.pr.name})
+            frappe.db.commit()
