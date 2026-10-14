@@ -25,6 +25,16 @@ Text captures preserve command output with ANSI styling, carriage returns, trace
 - Cookie-free guest HTTP calls additionally verified [successful acknowledgement](guest-ipn.json) and [PAY-001 refusal](guest-refusal.json). The authenticated Desk screenshot flow used Administrator; it is not ordinary-cashier-role acceptance.
 - [Teardown](teardown.txt): exact project `docker compose -p p1-ea-payments-ekqdcahp -f compose.yaml down -v` removed its three containers, three volumes and network. Follow-up label queries returned no project resources. Temporary Chrome profile is absent.
 
+
+## Review round 1 (Grok CHANGES REQUESTED on 8de2414)
+
+- RED `bfbc429fcfc439dd96bb8ea471cc78f286f7950e` (tests only): Pesapal GetTransactionStatus stub now uses the real API 3.0 shape (HTTP 200, always an `error` object; pending = `status_code` 0 `INVALID` with `payment_details_not_found` / "Pending Payment"); new tests for completed-with-error-object, pending stays Queued then poller settles, FAILED/REVERSED fail as PAY-006, auth error without `status_code` is PAY-006, and IPN re-registration after Environment or credential change. [Capture](review-1-red.txt): 41 tests, 17 failures + 2 errors, exit 1 (every settlement path refused as PAY-006; `ipn_id` not cleared).
+- GREEN `1b9c13007103bf0a5bf2dbbd0a8da1c03b892969`: `provider_request(check_error=False)` for GetTransactionStatus only, decision by `status_code` (0 Queued, 1 settle, 2/3 PAY-006, anything else PAY-006); `PesapalSettings.validate` clears `ipn_id` when Environment or either credential changes, so the next order calls RegisterIPN on the new host. 41 passed.
+- `275ab7bc4cf32698c9d0b8be13561ebee1029825` (test only): pending stub also returns `status: "500"` exactly as cybqa did. [Final capture](review-1-green.txt): 41 passed, 0 failed/errors/skips. [Build](review-1-build.txt) passed.
+- [Real Pesapal sandbox](review-1-pesapal-sandbox.txt) (cybqa, Pesapal's published Ugandan demo merchant from developer.pesapal.com/api3-demo-keys.txt, keys passed at runtime and never stored in git or captures): app code ran Auth/RequestToken, RegisterIPN (empty ipn_id after the credential save, then registered), SubmitOrderRequest (redirect on cybqa.pesapal.com) and, via `reverify`, GetTransactionStatus -> `status_code` 0, `INVALID`, 1000.0 UGX, matching merchant reference, `status` "500", error `payment_details_not_found`/"Pending Payment". Result `{"status": "Queued"}`; Integration Request stays Queued, Payment Request Requested. No payment was made, so the completed (`status_code` 1) path is still proven only with the documented shape under stub: CANNOT-VERIFY live.
+- Bench: project `p1-ea-payments-r2-9lranb`, `frappe/erpnext:v16.50.0`, Frappe 16.52.0, ERPNext 16.50.0, payments `cca07d9f9`, loopback `127.0.0.1:19381`; torn down with `docker compose down -v` after capture.
+- Not changed: Flutterwave customer `phonenumber` (Grok non-blocking; email is the required field); Flutterwave live sandbox still CANNOT-VERIFY (no test keys).
+
 ## Screenshots
 
 1. [Pesapal Settings saved, Sandbox, masked credentials](01-pesapal-settings-sandbox.png)
