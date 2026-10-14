@@ -378,7 +378,9 @@ class TestGateways(unittest.TestCase):
         calls = []
         barrier = threading.Barrier(2)
         def paid(doc):
-            calls.append(doc.name)
+            # The poller can also settle unrelated demo requests on this site.
+            if doc.name == self.pr.name:
+                calls.append(doc.name)
             return original(doc)
         def worker(poll):
             frappe.init(site=site, sites_path=sites_path)
@@ -448,4 +450,3 @@ class TestGateways(unittest.TestCase):
             frappe.db.delete("Integration Request", {"reference_docname": self.pr.name})
             frappe.db.delete("Payment Request", {"name": self.pr.name})
             frappe.db.commit()
-
