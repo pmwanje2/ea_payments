@@ -876,13 +876,16 @@ class TestGateways(unittest.TestCase):
                          ("Cancelled", 2))
         self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Failed")
         self.assertEqual(self.cancel_calls(), [])
-        logs = frappe.get_all("Error Log", filters={"method": "PAY-012 provider cancel not queued"},
-                              fields=["method", "error"])
-        self.assertEqual([row.method for row in logs], ["PAY-012 provider cancel not queued"])
-        self.assertEqual(logs[0].error, integration.name + ": ConnectionError")
-        self.assertNotIn(secret, logs[0].error)
-        self.assertNotIn("must-not-log", logs[0].error)
-        self.assertNotIn("queue down", logs[0].error)
+        # Other failures in this process also record a log, and the insert survives
+        # rollback once a later commit lands. Match this Integration Request only.
+        expected = integration.name + ": ConnectionError"
+        logs = frappe.get_all("Error Log", filters={
+            "method": "PAY-012 provider cancel not queued", "error": expected,
+        }, fields=["method", "error"])
+        self.assertEqual([(row.method, row.error) for row in logs],
+                         [("PAY-012 provider cancel not queued", expected)])
+        leaked = frappe.get_all("Error Log", filters={"error": ["like", "%must-not-log%"]}, pluck="name")
+        self.assertEqual(leaked, [])
 
     def test_replayed_cancel_job_does_not_send_cancel_order_again(self):
         _, integration, _ = self.order()
