@@ -417,6 +417,40 @@ class TestGateways(unittest.TestCase):
         result = self.ipn(integration)
         self.assertEqual(result["code"], "PAY-003")
 
+    def test_completed_provider_payment_for_cancelled_request_is_unallocated_and_alerted(self):
+        _, integration, _ = self.order()
+        self.pr.db_set({"docstatus": 2, "status": "Cancelled"})
+        result = self.ipn(integration)
+        self.assertEqual(result["status"], "Completed")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Cancelled")
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Completed")
+        output = frappe.parse_json(frappe.db.get_value("Integration Request", integration.name, "output"))
+        self.assertEqual(output["allocation"], "Unallocated")
+        self.assertEqual(output["reference"], self.pr.name)
+        self.assertEqual(output["amount"], 12000)
+        logs = frappe.get_all("Notification Log", filters={"document_name": self.pr.name},
+                              fields=["for_user", "title", "description"])
+        self.assertTrue(logs)
+        self.assertTrue(any("PAY-011" in (row.title or "") and self.pr.name in (row.description or "")
+                            and "12000" in (row.description or "") for row in logs))
+
+    def test_completed_provider_payment_for_failed_request_is_unallocated_and_not_paid(self):
+        _, integration, _ = self.order()
+        self.pr.db_set({"status": "Failed", "failed_reason": "PAY-006: expired"})
+        result = self.ipn(integration)
+        self.assertEqual(result["status"], "Completed")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Completed")
+
+    def test_late_completed_callback_is_idempotent_for_pay_011_notification(self):
+        _, integration, _ = self.order()
+        self.pr.db_set({"docstatus": 2, "status": "Cancelled"})
+        self.ipn(integration)
+        self.ipn(integration)
+        logs = frappe.get_all("Notification Log", filters={"document_name": self.pr.name,
+                                                            "title": ["like", "PAY-011%"]})
+        self.assertEqual(len(logs), 1)
+
     def test_phone_success_publishes_native_pos_event_after_commit(self):
         with patch.object(frappe, "publish_realtime") as publish:
             self.ipn()
