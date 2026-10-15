@@ -45,9 +45,16 @@ started, so it counts as unpaid. Other provider/authentication errors are not
 proof of nonpayment: they leave the Payment Request open and are retried.
 
 To stop late payments at the source, Flutterwave checkouts are created with
-`session_duration` equal to the expiry, and an expired or failed Pesapal order is
-cancelled once with the documented `Transactions/CancelOrder` endpoint (best
-effort; local expiry does not depend on it).
+`configuration.session_duration` equal to the expiry (the current Standard API
+reference nests it there). Whether that closes the hosted checkout is unverified
+until a Flutterwave test key proves it. An expired or failed Pesapal order is
+cancelled once with the documented `Transactions/CancelOrder` endpoint, queued
+after the database commit so the request rows are not locked during the provider
+timeouts (best effort; local expiry does not depend on it). If the queue is down,
+the failure is logged and polling continues. Before the call, the job records
+`provider_cancel_sent` in the Integration Request's data, so a replayed or
+re-enqueued job sends nothing: at most one CancelOrder per order, even if that
+one call fails.
 
 The poller re-checks cancelled/failed requests for late payment for 48 hours after
 expiry (`ea_payments_late_payment_window_hours`, measured from order creation plus

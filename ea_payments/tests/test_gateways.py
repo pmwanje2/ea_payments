@@ -730,6 +730,27 @@ class TestGateways(unittest.TestCase):
     def polled(self, integration):
         return any(c[2].get("params", {}).get("orderTrackingId") == integration.name for c in self.http_calls)
 
+    def cancel_calls(self):
+        return [c for c in self.http_calls if c[1].endswith("Transactions/CancelOrder")]
+
+    def run_queued_provider_cancels(self, integration_name):
+        """Run CancelOrder jobs that were queued to start after commit."""
+        from frappe.utils.background_jobs import get_queue
+
+        ran = 0
+        for qname in ("short", "default"):
+            for job in list(get_queue(qname).jobs):
+                payload = job.kwargs or {}
+                kwargs = payload.get("kwargs") or {}
+                if payload.get("method") != "ea_payments.common.cancel_provider_order":
+                    continue
+                if kwargs.get("integration_name") != integration_name:
+                    continue
+                job.delete()
+                self.common.cancel_provider_order(**kwargs)
+                ran += 1
+        return ran
+
     def expired_cancelled_order(self, age):
         self.pr = self.make_pr()
         _, integration, _ = self.order()
@@ -776,9 +797,82 @@ class TestGateways(unittest.TestCase):
         self.provider_status = "pending"
         self.common.poll_queued()
         self.common.poll_queued()
-        cancels = [c for c in self.http_calls if c[1].endswith("Transactions/CancelOrder")]
+        # The provider call must not run inside the poll that still holds the request rows.
+        self.assertEqual(self.cancel_calls(), [])
+        self.assertEqual(self.run_queued_provider_cancels(integration.name), 1)
+        cancels = self.cancel_calls()
         self.assertEqual([c[2]["json"] for c in cancels], [{"order_tracking_id": integration.name}])
         self.assertEqual(cancels[0][0], "POST")
+
+    def test_pesapal_cancel_order_http_starts_only_after_commit(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        seen = []
+        state = {"commits": 0, "inside": False}
+        original_http = self.http
+        original_commit = frappe.db.commit
+
+        def watch(method, url, **kwargs):
+            if url.endswith("Transactions/CancelOrder"):
+                seen.append((state["commits"], state["inside"]))
+            return original_http(method, url, **kwargs)
+
+        def commit(*args, **kwargs):
+            state["inside"] = True
+            try:
+                return original_commit(*args, **kwargs)
+            finally:
+                state["inside"] = False
+                state["commits"] += 1
+
+        with patch("requests.request", side_effect=watch), patch.object(frappe.db, "commit", commit):
+            self.common.poll_queued()
+            self.assertEqual(seen, [])
+            self.assertGreaterEqual(state["commits"], 1)
+            self.assertEqual(self.run_queued_provider_cancels(integration.name), 1)
+        self.assertEqual(seen, [(state["commits"], False)])
+        self.assertEqual([c[2]["json"] for c in self.cancel_calls()], [{"order_tracking_id": integration.name}])
+
+    def test_deferred_cancel_enqueue_failure_does_not_abort_polling(self):
+        # Redis fails when the after-commit enqueue actually runs, not at registration.
+        import redis
+        from rq import Queue
+        expired = []
+        for _ in range(2):
+            self.pr = self.make_pr()
+            _, integration, _ = self.order()
+            integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+            expired.append((self.pr.name, integration))
+        self.provider_status = "pending"
+        with patch.object(Queue, "enqueue_call", side_effect=redis.exceptions.ConnectionError("queue down")):
+            try:
+                self.common.poll_queued()
+            except Exception as error:
+                self.fail("Deferred cancel enqueue failure aborted polling: " + type(error).__name__)
+        for pr_name, integration in expired:
+            with self.subTest(pr=pr_name):
+                self.assertEqual(frappe.db.get_value("Payment Request", pr_name, ["status", "docstatus"]),
+                                 ("Cancelled", 2))
+                self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Failed")
+        self.assertEqual(self.cancel_calls(), [])
+
+    def test_replayed_cancel_job_does_not_send_cancel_order_again(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        self.common.poll_queued()
+        self.assertEqual(self.run_queued_provider_cancels(integration.name), 1)
+        sent = frappe.parse_json(frappe.db.get_value("Integration Request", integration.name, "data"))
+        self.assertTrue(sent.get("provider_cancel_sent"))
+        # A finished job can be re-enqueued (deduplicate only covers queued/started jobs) or replayed.
+        self.common.cancel_provider_order(integration_name=integration.name)
+        self.common.cancel_at_provider(frappe.get_doc("Integration Request", integration.name))
+        frappe.db.commit()
+        self.run_queued_provider_cancels(integration.name)
+        self.assertEqual([c[2]["json"] for c in self.cancel_calls()], [{"order_tracking_id": integration.name}])
+        data = frappe.parse_json(frappe.db.get_value("Integration Request", integration.name, "data"))
+        self.assertEqual(data["checkout_url"], sent["checkout_url"])
 
     def test_provider_cancel_failure_does_not_block_local_expiry(self):
         _, integration, _ = self.order()
@@ -792,15 +886,29 @@ class TestGateways(unittest.TestCase):
             return original(method, url, **kwargs)
         with patch("requests.request", side_effect=cancel_down):
             self.common.poll_queued()
-        self.assertTrue(any(c[1].endswith("Transactions/CancelOrder") for c in self.http_calls))
+            # Local expiry must already be done before the provider call is attempted.
+            self.assert_unpaid("PAY-006", integration, "Cancelled")
+            self.assertEqual(self.cancel_calls(), [])
+            self.run_queued_provider_cancels(integration.name)
+        self.assertEqual(len(self.cancel_calls()), 1)
         self.assert_unpaid("PAY-006", integration, "Cancelled")
+
+    def test_flutterwave_customer_phone_uses_documented_field(self):
+        self.pr.db_set("payment_gateway", "Flutterwave")
+        self.order("Flutterwave", phone_number="256700000009", sender="256700000002")
+        payload = [c[2]["json"] for c in self.http_calls if c[1].endswith("/payments")][-1]
+        customer = payload["customer"]
+        self.assertEqual(customer.get("phone_number"), "256700000009")
+        self.assertNotIn("phonenumber", customer)
 
     def test_flutterwave_checkout_session_lasts_only_until_local_expiry(self):
         for configured, expected in ((None, 60), (90, 90), (3000, 1440)):
             with self.subTest(configured=configured), patch.dict(frappe.conf, {"ea_payments_expiry_minutes": configured}):
                 self.flutterwave_order(0)
                 payload = [c[2]["json"] for c in self.http_calls if c[1].endswith("/payments")][-1]
-                self.assertEqual(payload.get("session_duration"), expected)
+                self.assertEqual((payload.get("configuration") or {}).get("session_duration"), expected)
+                self.assertNotIn("session_duration", payload)
+                self.assertNotIn("configurations", payload)
 
     def test_young_flutterwave_checkout_never_opened_stays_open(self):
         integration = self.flutterwave_order(30)
