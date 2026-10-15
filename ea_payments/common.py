@@ -198,29 +198,46 @@ def cancel_at_provider(integration):
     settings = frappe.get_doc(integration.integration_request_service + " Settings")
     if not hasattr(settings, "cancel_order"):
         return
+    name = integration.name
+    frappe.db.after_commit.add(lambda: queue_provider_cancel(name))
+
+
+def queue_provider_cancel(integration_name):
+    # Runs inside commit's after_commit callbacks. A Redis failure here must not
+    # escape the commit, or it aborts the rest of a poll batch or an IPN ack.
     try:
         frappe.enqueue(
             "ea_payments.common.cancel_provider_order",
             queue="short",
             timeout=120,
-            enqueue_after_commit=True,
-            integration_name=integration.name,
-            job_id="ea-payments-cancel-" + integration.name,
+            integration_name=integration_name,
+            job_id="ea-payments-cancel-" + integration_name,
             deduplicate=True,
         )
-    except Exception:
-        # Redis or queue setup must not roll back the local expiry already done above.
-        pass
+    except Exception as error:
+        # Exception text can carry connection details; log only the type.
+        frappe.logger("ea_payments").warning(
+            "Provider cancel not queued for %s: %s", integration_name, type(error).__name__)
 
 
 def cancel_provider_order(integration_name):
-    integration = frappe.get_doc("Integration Request", integration_name)
+    """At most one CancelOrder per order: claim it on the Integration Request under
+    the row lock and commit before the HTTP call, so a replayed or re-enqueued job
+    is a no-op and no lock is held during the provider timeouts."""
+    integration = frappe.get_doc("Integration Request", integration_name, for_update=True)
+    data = frappe.parse_json(integration.data or "{}") or {}
+    if data.get("provider_cancel_sent"):
+        return
     settings = frappe.get_doc(integration.integration_request_service + " Settings")
-    if hasattr(settings, "cancel_order"):
-        try:
-            settings.cancel_order(integration)
-        except frappe.ValidationError:
-            pass
+    if not hasattr(settings, "cancel_order"):
+        return
+    data["provider_cancel_sent"] = str(now_datetime())
+    integration.db_set("data", frappe.as_json(data), update_modified=False)
+    frappe.db.commit()
+    try:
+        settings.cancel_order(integration)
+    except frappe.ValidationError:
+        pass
 
 
 def unallocated(pr, integration, verified, amount):

@@ -49,9 +49,12 @@ To stop late payments at the source, Flutterwave checkouts are created with
 reference nests it there). Whether that closes the hosted checkout is unverified
 until a Flutterwave test key proves it. An expired or failed Pesapal order is
 cancelled once with the documented `Transactions/CancelOrder` endpoint, queued
-with `frappe.enqueue(..., enqueue_after_commit=True)` so the request rows are
-not locked during the provider timeouts (best effort; local expiry does not
-depend on it).
+after the database commit so the request rows are not locked during the provider
+timeouts (best effort; local expiry does not depend on it). If the queue is down,
+the failure is logged and polling continues. Before the call, the job records
+`provider_cancel_sent` in the Integration Request's data, so a replayed or
+re-enqueued job sends nothing: at most one CancelOrder per order, even if that
+one call fails.
 
 The poller re-checks cancelled/failed requests for late payment for 48 hours after
 expiry (`ea_payments_late_payment_window_hours`, measured from order creation plus
