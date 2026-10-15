@@ -113,6 +113,13 @@ class TestGateways(unittest.TestCase):
                                       "message": "Unauthorized"}, "status": "500"}
         elif url.endswith("/payments"):
             response = {"status": "success", "data": {"link": "https://checkout.flutterwave.com/" + payload["tx_ref"]}}
+        elif "/transactions/" in url and self.provider_status in ("not_found", "auth_error"):
+            # Documented v3 error bodies: verify_by_reference answers HTTP 400 for an
+            # unknown tx_ref; a bad secret key answers HTTP 401.
+            status_code, message = ((400, "No transaction was found for this id")
+                                    if self.provider_status == "not_found"
+                                    else (401, "Invalid authorization key"))
+            return self.response({"status": "error", "message": message, "data": None}, status_code)
         elif "/transactions/" in url:
             response = {"status": "success", "data": {
                 "id": 42001, "status": "successful" if self.provider_status == "success" else self.provider_status,
@@ -125,12 +132,19 @@ class TestGateways(unittest.TestCase):
             }}
         else:
             raise AssertionError("unexpected provider URL: " + url)
+        return self.response(response)
+
+    def response(self, body, status_code=200):
+        import requests
         class Response:
             def raise_for_status(self):
-                pass
+                if self.status_code >= 400:
+                    raise requests.HTTPError(str(self.status_code) + " Client Error")
             def json(self):
-                return response
-        return Response()
+                return body
+        result = Response()
+        result.status_code = status_code
+        return result
 
     def ipn(self, integration=None, **kwargs):
         if integration is None:
@@ -603,6 +617,35 @@ class TestGateways(unittest.TestCase):
                 self.provider_status = status
                 self.common.poll_queued()
                 self.assert_unpaid("PAY-006", integration, "Failed")
+
+    def flutterwave_order(self, age_minutes):
+        self.pr = self.make_pr(provider="Flutterwave")
+        _, integration, _ = self.order("Flutterwave")
+        integration.db_set("creation", now_datetime() - timedelta(minutes=age_minutes))
+        return integration
+
+    def test_expired_flutterwave_checkout_never_opened_is_unpaid(self):
+        integration = self.flutterwave_order(61)
+        self.provider_status = "not_found"
+        self.common.poll_queued()
+        integration.reload()
+        self.assertEqual(integration.status, "Failed")
+        self.assertIn("expired", integration.error.lower())
+        self.assertNotEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+
+    def test_young_flutterwave_checkout_never_opened_stays_open(self):
+        integration = self.flutterwave_order(30)
+        self.provider_status = "not_found"
+        self.common.poll_queued()
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Queued")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+
+    def test_expired_flutterwave_auth_error_stays_transient(self):
+        integration = self.flutterwave_order(61)
+        self.provider_status = "auth_error"
+        self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration)
+        self.assertEqual(integration.error, "PAY-006: " + self.common.MESSAGES["PAY-006"])
 
     def test_expired_provider_outage_does_not_claim_payment_failed(self):
         _, integration, _ = self.order()
