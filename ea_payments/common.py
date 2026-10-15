@@ -139,9 +139,13 @@ def settle(integration, verified):
                       else "PAY-006: Provider reported a failed, reversed or cancelled payment.")
             integration.db_set({"status": "Failed", "error": reason})
             if pr.docstatus == 1 and pr.status in ("Requested", "Initiated"):
-                # v16 set_failed is a no-op; use Document.db_set like the
-                # controller's other native status transitions.
-                pr.db_set({"status": "Failed", "failed_reason": reason})
+                # Native cancel releases the requested amount, so the bill can be
+                # phone-paid again (ERPNext counts submitted requests' outstanding).
+                # Callbacks run as Guest; ERPNext's own cancel_old_payment_requests
+                # cancels with ignore_permissions the same way.
+                pr.db_set("failed_reason", reason)
+                pr.flags.ignore_permissions = True
+                pr.cancel()
             return {"status": "Failed", "code": "PAY-006", "message": reason}
         if pr.docstatus == 2:
             return refuse("PAY-003", integration)
