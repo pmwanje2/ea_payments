@@ -210,8 +210,7 @@ def unallocated(pr, integration, verified, amount):
     state = "cancelled" if pr.docstatus == 2 or pr.status == "Cancelled" else "failed"
     message = (f"PAY-011: Phone payment received for {state} Payment Request {pr.name} "
                f"({amount} UGX, provider reference {reference}). Refund or allocate it.")
-    managers = frappe.get_all("Has Role", filters={"role": "Accounts Manager", "parenttype": "User"}, pluck="parent")
-    for user in frappe.get_all("User", filters={"enabled": 1, "name": ["in", managers]}, pluck="name"):
+    for user in enabled_users_with("Accounts Manager") or enabled_users_with("System Manager"):
         key = {"for_user": user, "document_type": "Payment Request", "document_name": pr.name,
                "source_doctype": "Integration Request", "source_name": integration.name}
         if not frappe.db.exists("Notification Log", key):
@@ -219,6 +218,11 @@ def unallocated(pr, integration, verified, amount):
                             "title": "PAY-011: Unallocated phone payment",
                             "description": escape_html(message)}).insert(ignore_permissions=True)
     return {"status": "Completed", "allocation": "Unallocated"}
+
+
+def enabled_users_with(role):
+    users = frappe.get_all("Has Role", filters={"role": role, "parenttype": "User"}, pluck="parent")
+    return frappe.get_all("User", filters={"enabled": 1, "name": ["in", users]}, pluck="name") if users else []
 
 
 def reverify(name, provider):
