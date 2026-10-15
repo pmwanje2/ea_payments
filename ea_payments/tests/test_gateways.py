@@ -588,6 +588,26 @@ class TestGateways(unittest.TestCase):
         self.common.poll_queued()
         self.assert_unpaid("PAY-006", integration)
 
+    def test_poller_retries_provider_outage_then_expires_confirmed_unpaid_order(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.http_error = True
+        self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration)
+        self.http_error = False
+        self.provider_status = "pending"
+        self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration, "Failed")
+
+    def test_poller_retries_provider_outage_then_settles_confirmed_success(self):
+        _, integration, _ = self.order()
+        self.http_error = True
+        self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration)
+        self.http_error = False
+        self.common.poll_queued()
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Paid")
+
     def test_terminal_failure_never_downgrades_paid_or_cancelled_request(self):
         for status, docstatus in (("Paid", 1), ("Cancelled", 2)):
             with self.subTest(status=status):
