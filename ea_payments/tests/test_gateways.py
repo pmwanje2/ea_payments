@@ -461,7 +461,7 @@ class TestGateways(unittest.TestCase):
                     self.pr.db_set({"status": status, "docstatus": docstatus})
                     integration.db_set("status", status)
                     original = type(self.pr).set_as_paid
-                    def paid(doc):
+                    def paid(doc, original=original):
                         if doc.name == self.pr.name:
                             raise AssertionError("no posting for late payment")
                         return original(doc)
