@@ -208,8 +208,9 @@ def poll_queued():
     for row in frappe.get_all("Integration Request", filters={
         "integration_request_service": ["in", ["Pesapal", "Flutterwave"]],
         "status": ["in", ["Queued", "Failed", "Cancelled"]],
-    }, fields=["name", "integration_request_service", "reference_docname", "status"]):
-        if row.status != "Queued" and frappe.db.get_value(
+    }, fields=["name", "integration_request_service", "reference_docname", "status", "error"]):
+        transient_error = row.status == "Failed" and row.error == "PAY-006: " + MESSAGES["PAY-006"]
+        if row.status != "Queued" and not transient_error and frappe.db.get_value(
                 "Payment Request", row.reference_docname, "status") not in ("Failed", "Cancelled"):
             continue
         reverify(row.name, row.integration_request_service)
