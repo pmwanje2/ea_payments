@@ -460,7 +460,12 @@ class TestGateways(unittest.TestCase):
                     _, integration, _ = self.order(provider)
                     self.pr.db_set({"status": status, "docstatus": docstatus})
                     integration.db_set("status", status)
-                    with patch.object(type(self.pr), "set_as_paid", side_effect=AssertionError("no posting")):
+                    original = type(self.pr).set_as_paid
+                    def paid(doc):
+                        if doc.name == self.pr.name:
+                            raise AssertionError("no posting for late payment")
+                        return original(doc)
+                    with patch.object(type(self.pr), "set_as_paid", paid):
                         self.common.poll_queued()
                     integration.reload()
                     self.assertEqual(integration.status, "Completed")
