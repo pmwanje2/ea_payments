@@ -20,6 +20,24 @@ MESSAGES = {
 }
 
 
+def _setting(key, default, maximum):
+    """Positive whole-number site config, else the default; capped at maximum."""
+    try:
+        value = int(frappe.conf.get(key) or default)
+    except (TypeError, ValueError):
+        value = default
+    return min(value if value > 0 else default, maximum)
+
+
+def expiry_minutes():
+    # 1440 = Flutterwave's maximum checkout session; open requests never outlive a day.
+    return _setting("ea_payments_expiry_minutes", 60, 1440)
+
+
+def late_window_hours():
+    return _setting("ea_payments_late_payment_window_hours", 48, 24 * 30)
+
+
 def refuse(code, integration=None):
     message = code + ": " + MESSAGES[code]
     if integration and integration.status != "Completed":
@@ -127,17 +145,12 @@ def settle(integration, verified):
     if verified.get("pending") or verified.get("failed"):
         if integration.status == "Completed":
             return {"status": "Completed"}
-        try:
-            expiry = int(frappe.conf.get("ea_payments_expiry_minutes") or 60)
-        except (TypeError, ValueError):
-            expiry = 60
-        if expiry <= 0:
-            expiry = 60
-        expired = now_datetime() > get_datetime(integration.creation) + timedelta(minutes=expiry)
+        expired = now_datetime() > get_datetime(integration.creation) + timedelta(minutes=expiry_minutes())
         if verified.get("failed") or expired:
             reason = ("PAY-006: Checkout expired without payment." if expired and verified.get("pending")
                       else "PAY-006: Provider reported a failed, reversed or cancelled payment.")
-            integration.db_set({"status": "Failed", "error": reason})
+            if (integration.status, integration.error) != ("Failed", reason):
+                integration.db_set({"status": "Failed", "error": reason})
             if pr.docstatus == 1 and pr.status in ("Requested", "Initiated"):
                 # Native cancel releases the requested amount, so the bill can be
                 # phone-paid again (ERPNext counts submitted requests' outstanding).
@@ -146,6 +159,7 @@ def settle(integration, verified):
                 pr.db_set("failed_reason", reason)
                 pr.flags.ignore_permissions = True
                 pr.cancel()
+                cancel_at_provider(integration)
             return {"status": "Failed", "code": "PAY-006", "message": reason}
         if pr.docstatus == 2:
             return refuse("PAY-003", integration)
@@ -174,6 +188,17 @@ def settle(integration, verified):
                 docname=pr.reference_name, user=pr.owner, after_commit=True,
                 message={"amount": amount, "success": True, "failure_message": ""})
     return {"status": "Completed"}
+
+
+def cancel_at_provider(integration):
+    """Best effort, once, where the provider documents it (Pesapal CancelOrder).
+    A late success is still caught by the callback or the late-payment poll."""
+    settings = frappe.get_doc(integration.integration_request_service + " Settings")
+    if hasattr(settings, "cancel_order"):
+        try:
+            settings.cancel_order(integration)
+        except frappe.ValidationError:
+            pass
 
 
 def unallocated(pr, integration, verified, amount):
@@ -215,9 +240,13 @@ def reverify(name, provider):
 
 
 def poll_queued():
+    # Open requests settle or expire within expiry_minutes (at most a day); cancelled or
+    # failed ones are re-checked for late receipts only during the late-payment window.
+    oldest = now_datetime() - timedelta(minutes=expiry_minutes(), hours=late_window_hours())
     for row in frappe.get_all("Integration Request", filters={
         "integration_request_service": ["in", ["Pesapal", "Flutterwave"]],
         "status": ["in", ["Queued", "Failed", "Cancelled"]],
+        "creation": [">", oldest],
     }, fields=["name", "integration_request_service", "reference_docname", "status", "error"]):
         transient_error = row.status == "Failed" and row.error == "PAY-006: " + MESSAGES["PAY-006"]
         if row.status != "Queued" and not transient_error and frappe.db.get_value(

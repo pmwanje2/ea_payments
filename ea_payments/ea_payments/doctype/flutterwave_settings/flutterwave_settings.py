@@ -3,7 +3,7 @@ import hmac
 import frappe
 from frappe.utils import get_url
 
-from ea_payments.common import GatewaySettings, MESSAGES, provider_request, refuse, reverify
+from ea_payments.common import GatewaySettings, MESSAGES, expiry_minutes, provider_request, refuse, reverify
 
 API = "https://api.flutterwave.com/v3"
 
@@ -18,6 +18,8 @@ class FlutterwaveSettings(GatewaySettings):
         response = provider_request("POST", API + "/payments", headers=self.headers(), json={
             "tx_ref": pr.name, "amount": amount, "currency": "UGX",
             "redirect_url": get_url("/payment-success"), "payment_options": "mobilemoneyuganda,card",
+            # Documented Standard checkout option: the hosted session closes at local expiry.
+            "session_duration": expiry_minutes(),
             "customer": {"email": args.get("payer_email") or pr.email_to,
                          "phonenumber": args.get("phone_number") or args.get("sender") or pr.phone_number,
                          "name": args.get("payer_name") or "Guest"}})

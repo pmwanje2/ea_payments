@@ -54,6 +54,12 @@ class PesapalSettings(GatewaySettings):
                 "amount": status.get("amount"), "currency": status.get("currency"),
                 "reference": status.get("merchant_reference"), "provider_reference": integration.name}
 
+    def cancel_order(self, integration):
+        # Documented API 3.0 OrderCancellation: pending or failed orders only, once.
+        headers = self.headers()
+        provider_request("POST", self.api + "/Transactions/CancelOrder", headers=headers,
+                         json={"order_tracking_id": integration.name})
+
 
 @frappe.whitelist(allow_guest=True, methods=["GET", "POST"])
 def ipn(OrderTrackingId=None, OrderMerchantReference=None, OrderNotificationType="IPNCHANGE", **kwargs):
