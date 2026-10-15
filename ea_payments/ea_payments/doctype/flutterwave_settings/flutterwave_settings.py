@@ -3,7 +3,7 @@ import hmac
 import frappe
 from frappe.utils import get_url
 
-from ea_payments.common import GatewaySettings, MESSAGES, provider_request, refuse, reverify
+from ea_payments.common import GatewaySettings, MESSAGES, expiry_minutes, provider_request, refuse, reverify
 
 API = "https://api.flutterwave.com/v3"
 
@@ -18,6 +18,8 @@ class FlutterwaveSettings(GatewaySettings):
         response = provider_request("POST", API + "/payments", headers=self.headers(), json={
             "tx_ref": pr.name, "amount": amount, "currency": "UGX",
             "redirect_url": get_url("/payment-success"), "payment_options": "mobilemoneyuganda,card",
+            # Documented Standard checkout option: the hosted session closes at local expiry.
+            "session_duration": expiry_minutes(),
             "customer": {"email": args.get("payer_email") or pr.email_to,
                          "phonenumber": args.get("phone_number") or args.get("sender") or pr.phone_number,
                          "name": args.get("payer_name") or "Guest"}})
@@ -28,12 +30,21 @@ class FlutterwaveSettings(GatewaySettings):
 
     def verify(self, integration):
         response = provider_request("GET", API + "/transactions/verify_by_reference", headers=self.headers(),
-                                    params={"tx_ref": integration.reference_docname})
+                                    params={"tx_ref": integration.reference_docname},
+                                    check_error=False, accept_statuses=(400,))
+        if response.get("status") != "success":
+            # Documented 400 for a tx_ref with no transaction: the checkout was never
+            # started, so it is unpaid and local expiry applies. Anything else is transient.
+            if "no transaction was found" in str(response.get("message") or "").lower():
+                return {"pending": True, "reference": None}
+            frappe.throw("PAY-006: " + MESSAGES["PAY-006"])
         status = response.get("data") or {}
         return {"success": status.get("status") == "successful",
                 "pending": status.get("status") in ("pending", "new"),
+                "failed": status.get("status") in ("failed", "cancelled"),
                 "amount": status.get("amount"), "currency": status.get("currency"),
-                "reference": status.get("tx_ref")}
+                "reference": status.get("tx_ref"),
+                "provider_reference": status.get("flw_ref") or status.get("id")}
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])

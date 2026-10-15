@@ -50,9 +50,15 @@ class PesapalSettings(GatewaySettings):
         code = status.get("status_code")
         if code not in (0, 1, 2, 3):
             frappe.throw("PAY-006: " + MESSAGES["PAY-006"])
-        return {"success": code == 1, "pending": code == 0,
+        return {"success": code == 1, "pending": code == 0, "failed": code in (2, 3),
                 "amount": status.get("amount"), "currency": status.get("currency"),
-                "reference": status.get("merchant_reference")}
+                "reference": status.get("merchant_reference"), "provider_reference": integration.name}
+
+    def cancel_order(self, integration):
+        # Documented API 3.0 OrderCancellation: pending or failed orders only, once.
+        headers = self.headers()
+        provider_request("POST", self.api + "/Transactions/CancelOrder", headers=headers,
+                         json={"order_tracking_id": integration.name})
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET", "POST"])

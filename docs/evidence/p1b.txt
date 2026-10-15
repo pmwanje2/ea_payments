@@ -1,0 +1,17 @@
+P1b disposable bench evidence
+
+Site: p1b.localhost (ERPNext 16.50.0, Frappe 16.52.0, payments cca07d9)
+Project: ea-p1b-epottr
+Host binding: 127.0.0.1:19385 only
+Provider HTTP: requests stub with Pesapal API 3 response shapes (status_code 0 INVALID and 1 COMPLETED)
+
+Command:
+docker compose -f /tmp/ea-p1b-ePOTtR/compose.yaml exec -T backend env/bin/python /proof/proof_transition.py
+
+Observed:
+- ACC-PRQ-2026-00007: 61-minute-old queued order -> Payment Request Failed; reason PAY-006: Checkout expired without payment.
+- ACC-PRQ-2026-00008: cancelled request with provider COMPLETED -> Payment Request stayed Cancelled; Integration Request Completed with allocation Unallocated and PAY-011 provider reference TRACK-ACC-PRQ-2026-00008.
+- Notification Log delivered to accounts.p1b@example.test (Accounts Manager): PAY-011: Phone payment received for cancelled Payment Request ACC-PRQ-2026-00008 (12000 UGX, provider reference TRACK-ACC-PRQ-2026-00008). Refund or allocate it.
+- Payment Entry count 0 and GL Entry count unchanged (16 -> 16) in the isolated proof run.
+
+Screenshots are native Desk views from the same localhost proof site. The disposable compose project and volumes were torn down after capture.
