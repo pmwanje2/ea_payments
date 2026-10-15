@@ -857,6 +857,33 @@ class TestGateways(unittest.TestCase):
                 self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Failed")
         self.assertEqual(self.cancel_calls(), [])
 
+    def test_deferred_cancel_enqueue_failure_is_recorded_as_an_error_log(self):
+        # Redis fails when the after-commit enqueue runs. The failure must be an
+        # Error Log: this runtime drops ea_payments warnings. The message is the
+        # Integration Request name and the exception type only.
+        import redis
+        from rq import Queue
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        secret = "queue down redis://user:must-not-log@10.1.2.3:6379"
+        with patch.object(Queue, "enqueue_call", side_effect=redis.exceptions.ConnectionError(secret)):
+            try:
+                self.common.poll_queued()
+            except Exception as error:
+                self.fail("Deferred cancel enqueue failure aborted polling: " + type(error).__name__)
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, ["status", "docstatus"]),
+                         ("Cancelled", 2))
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Failed")
+        self.assertEqual(self.cancel_calls(), [])
+        logs = frappe.get_all("Error Log", filters={"method": "PAY-012 provider cancel not queued"},
+                              fields=["method", "error"])
+        self.assertEqual([row.method for row in logs], ["PAY-012 provider cancel not queued"])
+        self.assertEqual(logs[0].error, integration.name + ": ConnectionError")
+        self.assertNotIn(secret, logs[0].error)
+        self.assertNotIn("must-not-log", logs[0].error)
+        self.assertNotIn("queue down", logs[0].error)
+
     def test_replayed_cancel_job_does_not_send_cancel_order_again(self):
         _, integration, _ = self.order()
         integration.db_set("creation", now_datetime() - timedelta(minutes=61))
