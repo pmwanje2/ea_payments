@@ -18,10 +18,12 @@ class FlutterwaveSettings(GatewaySettings):
         response = provider_request("POST", API + "/payments", headers=self.headers(), json={
             "tx_ref": pr.name, "amount": amount, "currency": "UGX",
             "redirect_url": get_url("/payment-success"), "payment_options": "mobilemoneyuganda,card",
-            # Documented Standard checkout option: the hosted session closes at local expiry.
-            "session_duration": expiry_minutes(),
+            # POST /v3/payments reference nests the session limit here. The guide sample
+            # still shows a top-level key and customer.phonenumber; the reference does not.
+            # Closing the hosted checkout is unverified until a test key proves it.
+            "configuration": {"session_duration": expiry_minutes()},
             "customer": {"email": args.get("payer_email") or pr.email_to,
-                         "phonenumber": args.get("phone_number") or args.get("sender") or pr.phone_number,
+                         "phone_number": args.get("phone_number") or args.get("sender") or pr.phone_number,
                          "name": args.get("payer_name") or "Guest"}})
         url = (response.get("data") or {}).get("link")
         if not url:

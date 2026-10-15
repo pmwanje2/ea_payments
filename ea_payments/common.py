@@ -192,7 +192,29 @@ def settle(integration, verified):
 
 def cancel_at_provider(integration):
     """Best effort, once, where the provider documents it (Pesapal CancelOrder).
+    Queue the call until after commit: it can take two 20-second timeouts, and
+    settle() is still holding the Payment Request and Integration Request locks.
     A late success is still caught by the callback or the late-payment poll."""
+    settings = frappe.get_doc(integration.integration_request_service + " Settings")
+    if not hasattr(settings, "cancel_order"):
+        return
+    try:
+        frappe.enqueue(
+            "ea_payments.common.cancel_provider_order",
+            queue="short",
+            timeout=120,
+            enqueue_after_commit=True,
+            integration_name=integration.name,
+            job_id="ea-payments-cancel-" + integration.name,
+            deduplicate=True,
+        )
+    except Exception:
+        # Redis or queue setup must not roll back the local expiry already done above.
+        pass
+
+
+def cancel_provider_order(integration_name):
+    integration = frappe.get_doc("Integration Request", integration_name)
     settings = frappe.get_doc(integration.integration_request_service + " Settings")
     if hasattr(settings, "cancel_order"):
         try:
