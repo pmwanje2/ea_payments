@@ -28,7 +28,14 @@ class FlutterwaveSettings(GatewaySettings):
 
     def verify(self, integration):
         response = provider_request("GET", API + "/transactions/verify_by_reference", headers=self.headers(),
-                                    params={"tx_ref": integration.reference_docname})
+                                    params={"tx_ref": integration.reference_docname},
+                                    check_error=False, accept_statuses=(400,))
+        if response.get("status") != "success":
+            # Documented 400 for a tx_ref with no transaction: the checkout was never
+            # started, so it is unpaid and local expiry applies. Anything else is transient.
+            if "no transaction was found" in str(response.get("message") or "").lower():
+                return {"pending": True, "reference": None}
+            frappe.throw("PAY-006: " + MESSAGES["PAY-006"])
         status = response.get("data") or {}
         return {"success": status.get("status") == "successful",
                 "pending": status.get("status") in ("pending", "new"),
