@@ -411,9 +411,10 @@ class TestGateways(unittest.TestCase):
             self.ipn(integration)
         self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Completed")
 
-    def test_cancelled_request_is_refused(self):
+    def test_cancelled_request_with_pending_provider_is_refused(self):
         _, integration, _ = self.order()
         self.pr.db_set("docstatus", 2)
+        self.provider_status = "pending"
         result = self.ipn(integration)
         self.assertEqual(result["code"], "PAY-003")
 
@@ -421,7 +422,7 @@ class TestGateways(unittest.TestCase):
         _, integration, _ = self.order()
         self.pr.db_set({"docstatus": 2, "status": "Cancelled"})
         result = self.ipn(integration)
-        self.assertEqual(result["status"], "Completed")
+        self.assertEqual(result["status"], 200)
         self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Cancelled")
         self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Completed")
         output = frappe.parse_json(frappe.db.get_value("Integration Request", integration.name, "output"))
@@ -438,7 +439,7 @@ class TestGateways(unittest.TestCase):
         _, integration, _ = self.order()
         self.pr.db_set({"status": "Failed", "failed_reason": "PAY-006: expired"})
         result = self.ipn(integration)
-        self.assertEqual(result["status"], "Completed")
+        self.assertEqual(result["status"], 200)
         self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
         self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Completed")
 
@@ -450,6 +451,59 @@ class TestGateways(unittest.TestCase):
         logs = frappe.get_all("Notification Log", filters={"document_name": self.pr.name,
                                                             "title": ["like", "PAY-011%"]})
         self.assertEqual(len(logs), 1)
+
+    def test_poller_detects_late_success_for_native_cancelled_and_failed_integrations(self):
+        for provider in ("Pesapal", "Flutterwave"):
+            for status, docstatus in (("Cancelled", 2), ("Failed", 1)):
+                with self.subTest(provider=provider, status=status):
+                    self.pr = self.make_pr(provider=provider)
+                    _, integration, _ = self.order(provider)
+                    self.pr.db_set({"status": status, "docstatus": docstatus})
+                    integration.db_set("status", status)
+                    with patch.object(type(self.pr), "set_as_paid", side_effect=AssertionError("no posting")):
+                        self.common.poll_queued()
+                    integration.reload()
+                    self.assertEqual(integration.status, "Completed")
+                    self.assertEqual(frappe.parse_json(integration.output)["allocation"], "Unallocated")
+                    self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), status)
+
+    def test_late_success_never_posts_money_or_publishes_pos_success(self):
+        _, integration, _ = self.order()
+        self.pr.db_set({"status": "Cancelled", "docstatus": 2})
+        before = {dt: frappe.db.count(dt) for dt in ("Payment Entry", "GL Entry")}
+        with patch.object(type(self.pr), "on_payment_authorized", side_effect=AssertionError("no authorization"), create=True), \
+             patch.object(type(self.pr), "set_as_paid", side_effect=AssertionError("no posting")), \
+             patch.object(frappe, "publish_realtime") as publish:
+            self.ipn(integration)
+        for dt, count in before.items():
+            self.assertEqual(frappe.db.count(dt), count)
+        self.assertFalse(any(call.kwargs.get("event") == "process_phone_payment" for call in publish.call_args_list))
+
+    def test_late_success_mismatch_is_not_recorded_as_unallocated_receipt(self):
+        for values, code in (({"provider_amount": 11999}, "PAY-001"),
+                             ({"provider_currency": "USD"}, "PAY-002"),
+                             ({"provider_reference": "OTHER"}, "PAY-003")):
+            with self.subTest(code=code):
+                self.pr = self.make_pr()
+                _, integration, _ = self.order()
+                self.pr.db_set({"status": "Cancelled", "docstatus": 2})
+                with patch.multiple(self, **values):
+                    result = self.ipn(integration)
+                self.assertEqual(result["code"], code)
+                self.assertFalse(frappe.db.exists("Notification Log", {"document_name": self.pr.name}))
+
+    def test_expiry_followed_by_late_payment_is_unallocated(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration, "Failed")
+        self.provider_status = "success"
+        self.common.poll_queued()
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
+        integration.reload()
+        self.assertEqual(integration.status, "Completed")
+        self.assertEqual(frappe.parse_json(integration.output)["allocation"], "Unallocated")
 
     def test_phone_success_publishes_native_pos_event_after_commit(self):
         with patch.object(frappe, "publish_realtime") as publish:
