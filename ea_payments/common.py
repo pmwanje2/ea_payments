@@ -126,7 +126,12 @@ def settle(integration, verified):
     if verified.get("pending") or verified.get("failed"):
         if integration.status == "Completed":
             return {"status": "Completed"}
-        expiry = max(1, int(frappe.conf.get("ea_payments_expiry_minutes") or 60))
+        try:
+            expiry = int(frappe.conf.get("ea_payments_expiry_minutes") or 60)
+        except (TypeError, ValueError):
+            expiry = 60
+        if expiry <= 0:
+            expiry = 60
         expired = now_datetime() > get_datetime(integration.creation) + timedelta(minutes=expiry)
         if verified.get("failed") or expired:
             reason = ("PAY-006: Checkout expired without payment." if expired and verified.get("pending")

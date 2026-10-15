@@ -31,6 +31,7 @@ An unpaid checkout expires after 60 minutes by default, measured from the
 Integration Request's creation (the provider order), not the Payment Request's
 creation. Configure positive whole minutes with
 `bench --site SITE set-config ea_payments_expiry_minutes 60`.
+Invalid or nonpositive values use the 60-minute default.
 Pesapal FAILED/REVERSED, Flutterwave failed/cancelled, and confirmed pending
 orders older than that limit set the Integration Request and the still-open
 Payment Request to native `Failed`, with a reason. This releases an open-request
