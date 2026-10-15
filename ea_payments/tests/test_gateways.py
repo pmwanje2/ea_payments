@@ -514,6 +514,22 @@ class TestGateways(unittest.TestCase):
         enabled = frappe.get_all("User", filters={"enabled": 1, "name": ["in", managers]}, pluck="name")
         self.assertCountEqual([row.for_user for row in logs], enabled)
 
+    def enabled_users_with(self, role):
+        users = frappe.get_all("Has Role", filters={"role": role, "parenttype": "User"}, pluck="parent")
+        return frappe.get_all("User", filters={"enabled": 1, "name": ["in", users]}, pluck="name")
+
+    def test_pay_011_falls_back_to_system_managers_without_an_accounts_manager(self):
+        _, integration, _ = self.order()
+        self.pr.db_set({"docstatus": 2, "status": "Cancelled"})
+        # Rolled back in tearDown; reverify itself does not commit.
+        frappe.db.delete("Has Role", {"role": "Accounts Manager", "parenttype": "User"})
+        self.assertEqual(self.enabled_users_with("Accounts Manager"), [])
+        self.common.reverify(integration.name, "Pesapal")
+        logs = frappe.get_all("Notification Log", filters={"document_name": self.pr.name,
+                                                            "title": ["like", "PAY-011%"]}, pluck="for_user")
+        self.assertTrue(logs)
+        self.assertCountEqual(logs, self.enabled_users_with("System Manager"))
+
     def test_poller_detects_late_success_for_native_cancelled_and_failed_integrations(self):
         for provider in ("Pesapal", "Flutterwave"):
             for status, docstatus in (("Cancelled", 2), ("Failed", 1)):
