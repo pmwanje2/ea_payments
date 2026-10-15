@@ -834,6 +834,46 @@ class TestGateways(unittest.TestCase):
         self.assertEqual(seen, [(state["commits"], False)])
         self.assertEqual([c[2]["json"] for c in self.cancel_calls()], [{"order_tracking_id": integration.name}])
 
+    def test_deferred_cancel_enqueue_failure_does_not_abort_polling(self):
+        # Redis fails when the after-commit enqueue actually runs, not at registration.
+        import redis
+        from rq import Queue
+        expired = []
+        for _ in range(2):
+            self.pr = self.make_pr()
+            _, integration, _ = self.order()
+            integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+            expired.append((self.pr.name, integration))
+        self.provider_status = "pending"
+        with patch.object(Queue, "enqueue_call", side_effect=redis.exceptions.ConnectionError("queue down")):
+            try:
+                self.common.poll_queued()
+            except Exception as error:
+                self.fail("Deferred cancel enqueue failure aborted polling: " + type(error).__name__)
+        for pr_name, integration in expired:
+            with self.subTest(pr=pr_name):
+                self.assertEqual(frappe.db.get_value("Payment Request", pr_name, ["status", "docstatus"]),
+                                 ("Cancelled", 2))
+                self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Failed")
+        self.assertEqual(self.cancel_calls(), [])
+
+    def test_replayed_cancel_job_does_not_send_cancel_order_again(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        self.common.poll_queued()
+        self.assertEqual(self.run_queued_provider_cancels(integration.name), 1)
+        sent = frappe.parse_json(frappe.db.get_value("Integration Request", integration.name, "data"))
+        self.assertTrue(sent.get("provider_cancel_sent"))
+        # A finished job can be re-enqueued (deduplicate only covers queued/started jobs) or replayed.
+        self.common.cancel_provider_order(integration_name=integration.name)
+        self.common.cancel_at_provider(frappe.get_doc("Integration Request", integration.name))
+        frappe.db.commit()
+        self.run_queued_provider_cancels(integration.name)
+        self.assertEqual([c[2]["json"] for c in self.cancel_calls()], [{"order_tracking_id": integration.name}])
+        data = frappe.parse_json(frappe.db.get_value("Integration Request", integration.name, "data"))
+        self.assertEqual(data["checkout_url"], sent["checkout_url"])
+
     def test_provider_cancel_failure_does_not_block_local_expiry(self):
         _, integration, _ = self.order()
         integration.db_set("creation", now_datetime() - timedelta(minutes=61))
