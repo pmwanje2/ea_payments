@@ -165,9 +165,53 @@ class TestGateways(unittest.TestCase):
 
     def assert_unpaid(self, code, integration, status="Requested"):
         self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), status)
+        if status == "Cancelled":
+            self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "docstatus"), 2)
         integration.reload()
         self.assertEqual(integration.status, "Failed")
         self.assertIn(code, integration.error)
+
+    def real_invoice(self):
+        """A submitted native Sales Invoice for the default company (12000 UGX)."""
+        company = frappe.get_doc("Company", frappe.defaults.get_global_default("company"))
+        for dt, name, values in (
+            ("Customer Group", "All Customer Groups", {"customer_group_name": "All Customer Groups", "is_group": 1}),
+            ("Territory", "All Territories", {"territory_name": "All Territories", "is_group": 1}),
+            ("Item Group", "All Item Groups", {"item_group_name": "All Item Groups", "is_group": 1}),
+            ("Customer Group", "EA Test Guests", {"customer_group_name": "EA Test Guests", "is_group": 0,
+                                                  "parent_customer_group": "All Customer Groups"}),
+            ("Territory", "EA Test Uganda", {"territory_name": "EA Test Uganda", "is_group": 0,
+                                             "parent_territory": "All Territories"}),
+            ("Item Group", "EA Test Meals", {"item_group_name": "EA Test Meals", "is_group": 0,
+                                             "parent_item_group": "All Item Groups"}),
+            ("UOM", "Nos", {"uom_name": "Nos", "must_be_whole_number": 1}),
+            ("Price List", "EA Test Selling", {"price_list_name": "EA Test Selling", "selling": 1,
+                                               "enabled": 1, "currency": "UGX"}),
+            ("Fiscal Year", str(now_datetime().year), {"year": str(now_datetime().year),
+                "year_start_date": f"{now_datetime().year}-01-01", "year_end_date": f"{now_datetime().year}-12-31"}),
+            ("Customer", "EA Test Guest", {"customer_name": "EA Test Guest", "customer_type": "Individual",
+                                           "customer_group": "EA Test Guests", "territory": "EA Test Uganda"}),
+            ("Item", "EA Test Meal", {"item_code": "EA Test Meal", "item_name": "EA Test Meal",
+                                      "item_group": "EA Test Meals", "stock_uom": "Nos", "is_stock_item": 0}),
+        ):
+            if not frappe.db.exists(dt, name):
+                frappe.get_doc({"doctype": dt, **values}).insert(ignore_permissions=True)
+        invoice = frappe.get_doc({"doctype": "Sales Invoice", "company": company.name, "customer": "EA Test Guest",
+            "currency": "UGX", "conversion_rate": 1, "debit_to": company.default_receivable_account,
+            "selling_price_list": "EA Test Selling", "price_list_currency": "UGX", "plc_conversion_rate": 1,
+            "cost_center": company.cost_center, "items": [{"item_code": "EA Test Meal", "qty": 1, "rate": 12000,
+            "income_account": company.default_income_account, "cost_center": company.cost_center}]})
+        invoice.insert(ignore_permissions=True)
+        invoice.submit()
+        return invoice
+
+    def native_phone_request(self, invoice):
+        # The host's native whitelisted method, called as a client would (no ERPNext import).
+        account = frappe.db.get_value("Payment Gateway Account",
+                                      {"payment_gateway": "Pesapal", "payment_channel": "Phone"}, "name")
+        return frappe.call("erpnext.accounts.doctype.payment_request.payment_request.make_payment_request",
+                           dt="Sales Invoice", dn=invoice.name, payment_gateway_account=account,
+                           phone_number="256700000001", mute_email=1, submit_doc=1, return_doc=1)
 
     def test_settings_register_gateways_phone_accounts_and_modes(self):
         for provider in ("Pesapal", "Flutterwave"):
@@ -265,7 +309,7 @@ class TestGateways(unittest.TestCase):
     def test_pesapal_ipn_never_trusts_callback_status_amount_or_currency(self):
         self.provider_status = "FAILED"
         self.ipn(status_code=1, amount=12000, currency="UGX")
-        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Cancelled")
 
     def test_pesapal_completed_status_with_real_error_object_settles(self):
         result = self.ipn()
@@ -290,7 +334,7 @@ class TestGateways(unittest.TestCase):
                 _, integration, _ = self.order()
                 self.provider_status = status
                 self.ipn(integration)
-                self.assert_unpaid("PAY-006", integration, "Failed")
+                self.assert_unpaid("PAY-006", integration, "Cancelled")
 
     def test_pesapal_status_auth_error_without_status_code_is_pay_006(self):
         _, integration, _ = self.order()
@@ -323,7 +367,7 @@ class TestGateways(unittest.TestCase):
     def test_flutterwave_failed_status_cannot_be_overridden_by_body(self):
         self.provider_status = "failed"
         self.webhook(amount=12000, currency="UGX", status="successful")
-        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Cancelled")
 
     def test_pay_001_amount_mismatch_is_audited_and_not_paid(self):
         _, integration, _ = self.order()
@@ -518,10 +562,10 @@ class TestGateways(unittest.TestCase):
         integration.db_set("creation", now_datetime() - timedelta(minutes=61))
         self.provider_status = "pending"
         self.common.poll_queued()
-        self.assert_unpaid("PAY-006", integration, "Failed")
+        self.assert_unpaid("PAY-006", integration, "Cancelled")
         self.provider_status = "success"
         self.common.poll_queued()
-        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Cancelled")
         integration.reload()
         self.assertEqual(integration.status, "Completed")
         self.assertEqual(frappe.parse_json(integration.output)["allocation"], "Unallocated")
@@ -557,7 +601,7 @@ class TestGateways(unittest.TestCase):
                     self.provider_status = status
                     self.sparse_unpaid = True
                     self.common.poll_queued()
-                    self.assert_unpaid("PAY-006", integration, "Failed")
+                    self.assert_unpaid("PAY-006", integration, "Cancelled")
                     self.assertIn("PAY-006", frappe.db.get_value("Payment Request", self.pr.name, "failed_reason"))
 
     def test_default_expiry_fails_sparse_invalid_pesapal_order_after_60_minutes(self):
@@ -566,7 +610,7 @@ class TestGateways(unittest.TestCase):
         self.sparse_unpaid = True
         integration.db_set("creation", now_datetime() - timedelta(minutes=61))
         self.common.poll_queued()
-        self.assert_unpaid("PAY-006", integration, "Failed")
+        self.assert_unpaid("PAY-006", integration, "Cancelled")
         self.assertIn("expired", (integration.error or "").lower())
 
     def test_young_sparse_invalid_pesapal_order_remains_open(self):
@@ -590,7 +634,7 @@ class TestGateways(unittest.TestCase):
             self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
             with patch.object(self.common, "now_datetime", return_value=created + timedelta(minutes=91)):
                 self.common.poll_queued()
-            self.assert_unpaid("PAY-006", integration, "Failed")
+            self.assert_unpaid("PAY-006", integration, "Cancelled")
 
     def test_invalid_expiry_configuration_uses_60_minutes_without_stopping_poller(self):
         self.provider_status = "pending"
@@ -606,7 +650,7 @@ class TestGateways(unittest.TestCase):
                 self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
                 integration.db_set("creation", now_datetime() - timedelta(minutes=61))
                 self.common.poll_queued()
-                self.assert_unpaid("PAY-006", integration, "Failed")
+                self.assert_unpaid("PAY-006", integration, "Cancelled")
 
     def test_expired_flutterwave_pending_or_new_order_fails(self):
         for status in ("pending", "new"):
@@ -616,13 +660,45 @@ class TestGateways(unittest.TestCase):
                 integration.db_set("creation", now_datetime() - timedelta(minutes=61))
                 self.provider_status = status
                 self.common.poll_queued()
-                self.assert_unpaid("PAY-006", integration, "Failed")
+                self.assert_unpaid("PAY-006", integration, "Cancelled")
 
     def flutterwave_order(self, age_minutes):
         self.pr = self.make_pr(provider="Flutterwave")
         _, integration, _ = self.order("Flutterwave")
         integration.db_set("creation", now_datetime() - timedelta(minutes=age_minutes))
         return integration
+
+    def test_expiry_natively_cancels_request_so_bill_can_be_phone_paid_again(self):
+        invoice = self.real_invoice()
+        first = self.native_phone_request(invoice)
+        integration = frappe.get_doc("Integration Request", {"reference_docname": first.name})
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        self.common.reverify(integration.name, "Pesapal")
+        first.reload()
+        self.assertEqual((first.docstatus, first.status), (2, "Cancelled"))
+        self.assertIn("expired", first.failed_reason.lower())
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Failed")
+        second = self.native_phone_request(invoice)
+        self.assertEqual((second.docstatus, second.status, second.grand_total), (1, "Requested", 12000))
+        self.provider_status = "success"
+        self.common.reverify(integration.name, "Pesapal")
+        output = frappe.parse_json(frappe.db.get_value("Integration Request", integration.name, "output"))
+        self.assertEqual(output["allocation"], "Unallocated")
+        self.assertTrue(frappe.db.exists("Notification Log", {"document_name": first.name,
+                                                              "title": ["like", "PAY-011%"]}))
+        self.assertEqual(frappe.db.get_value("Payment Request", first.name, "status"), "Cancelled")
+        self.assertEqual(frappe.db.get_value("Payment Request", second.name, "status"), "Requested")
+
+    def test_guest_ipn_terminal_failure_natively_cancels_request(self):
+        _, integration, _ = self.order()
+        self.provider_status = "FAILED"
+        frappe.set_user("Guest")
+        try:
+            self.ipn(integration)
+        finally:
+            frappe.set_user("Administrator")
+        self.assert_unpaid("PAY-006", integration, "Cancelled")
 
     def test_expired_flutterwave_checkout_never_opened_is_unpaid(self):
         integration = self.flutterwave_order(61)
@@ -663,7 +739,7 @@ class TestGateways(unittest.TestCase):
         self.http_error = False
         self.provider_status = "pending"
         self.common.poll_queued()
-        self.assert_unpaid("PAY-006", integration, "Failed")
+        self.assert_unpaid("PAY-006", integration, "Cancelled")
 
     def test_poller_retries_provider_outage_then_settles_confirmed_success(self):
         _, integration, _ = self.order()
