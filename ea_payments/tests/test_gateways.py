@@ -113,6 +113,8 @@ class TestGateways(unittest.TestCase):
                                       "message": "Unauthorized"}, "status": "500"}
         elif url.endswith("/payments"):
             response = {"status": "success", "data": {"link": "https://checkout.flutterwave.com/" + payload["tx_ref"]}}
+        elif url.endswith("Transactions/CancelOrder"):
+            response = {"status": "200", "message": "Ok"}  # documented Pesapal API 3.0 response
         elif "/transactions/" in url and self.provider_status in ("not_found", "auth_error"):
             # Documented v3 error bodies: verify_by_reference answers HTTP 400 for an
             # unknown tx_ref; a bad secret key answers HTTP 401.
@@ -708,6 +710,81 @@ class TestGateways(unittest.TestCase):
         self.assertEqual(integration.status, "Failed")
         self.assertIn("expired", integration.error.lower())
         self.assertNotEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+
+    def polled(self, integration):
+        return any(c[2].get("params", {}).get("orderTrackingId") == integration.name for c in self.http_calls)
+
+    def expired_cancelled_order(self, age):
+        self.pr = self.make_pr()
+        _, integration, _ = self.order()
+        self.pr.db_set({"status": "Cancelled", "docstatus": 2})
+        integration.db_set({"status": "Failed", "error": "PAY-006: Checkout expired without payment.",
+                            "creation": now_datetime() - age})
+        return integration
+
+    def test_late_payment_window_bounds_polling_after_expiry(self):
+        self.provider_status = "pending"
+        inside = self.expired_cancelled_order(timedelta(minutes=60, hours=47))
+        outside = self.expired_cancelled_order(timedelta(minutes=60, hours=49))
+        self.common.poll_queued()
+        self.assertTrue(self.polled(inside))
+        self.assertFalse(self.polled(outside))
+
+    def test_late_payment_window_is_configurable(self):
+        self.provider_status = "pending"
+        with patch.dict(frappe.conf, {"ea_payments_late_payment_window_hours": 2}):
+            inside = self.expired_cancelled_order(timedelta(minutes=60, hours=1))
+            outside = self.expired_cancelled_order(timedelta(minutes=60, hours=3))
+            self.common.poll_queued()
+        self.assertTrue(self.polled(inside))
+        self.assertFalse(self.polled(outside))
+
+    def test_expiry_is_capped_at_24_hours_so_open_requests_are_not_polled_past_a_day(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(hours=25))
+        self.provider_status = "pending"
+        with patch.dict(frappe.conf, {"ea_payments_expiry_minutes": 3000}):
+            self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration, "Cancelled")
+
+    def test_already_failed_order_is_not_rewritten_on_every_poll(self):
+        integration = self.expired_cancelled_order(timedelta(hours=2))
+        before = frappe.db.get_value("Integration Request", integration.name, "modified")
+        self.provider_status = "pending"
+        self.common.poll_queued()
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "modified"), before)
+
+    def test_pesapal_order_is_cancelled_at_the_provider_once_on_expiry(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        self.common.poll_queued()
+        self.common.poll_queued()
+        cancels = [c for c in self.http_calls if c[1].endswith("Transactions/CancelOrder")]
+        self.assertEqual([c[2]["json"] for c in cancels], [{"order_tracking_id": integration.name}])
+        self.assertEqual(cancels[0][0], "POST")
+
+    def test_provider_cancel_failure_does_not_block_local_expiry(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.provider_status = "pending"
+        original = self.http
+        def cancel_down(method, url, **kwargs):
+            if url.endswith("Transactions/CancelOrder"):
+                self.http_calls.append((method, url, kwargs))
+                raise RuntimeError("provider down")
+            return original(method, url, **kwargs)
+        with patch("requests.request", side_effect=cancel_down):
+            self.common.poll_queued()
+        self.assertTrue(any(c[1].endswith("Transactions/CancelOrder") for c in self.http_calls))
+        self.assert_unpaid("PAY-006", integration, "Cancelled")
+
+    def test_flutterwave_checkout_session_lasts_only_until_local_expiry(self):
+        for configured, expected in ((None, 60), (90, 90), (3000, 1440)):
+            with self.subTest(configured=configured), patch.dict(frappe.conf, {"ea_payments_expiry_minutes": configured}):
+                self.flutterwave_order(0)
+                payload = [c[2]["json"] for c in self.http_calls if c[1].endswith("/payments")][-1]
+                self.assertEqual(payload.get("session_duration"), expected)
 
     def test_young_flutterwave_checkout_never_opened_stays_open(self):
         integration = self.flutterwave_order(30)
