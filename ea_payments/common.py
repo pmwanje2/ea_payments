@@ -133,8 +133,8 @@ def settle(integration, verified):
                       else "PAY-006: Provider reported a failed, reversed or cancelled payment.")
             integration.db_set({"status": "Failed", "error": reason})
             if pr.docstatus == 1 and pr.status in ("Requested", "Initiated"):
-                # v16 Payment Request uses Document.db_set for status transitions;
-                # there is no native set_failed method.
+                # v16 set_failed is a no-op; use Document.db_set like the
+                # controller's other native status transitions.
                 pr.db_set({"status": "Failed", "failed_reason": reason})
             return {"status": "Failed", "code": "PAY-006", "message": reason}
         if pr.docstatus == 2:
