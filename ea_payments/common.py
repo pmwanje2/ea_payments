@@ -215,9 +215,11 @@ def queue_provider_cancel(integration_name):
             deduplicate=True,
         )
     except Exception as error:
-        # Exception text can carry connection details; log only the type.
-        frappe.logger("ea_payments").warning(
-            "Provider cancel not queued for %s: %s", integration_name, type(error).__name__)
+        # Exception text can carry connection details; record only the type.
+        frappe.log_error(
+            title="PAY-012 provider cancel not queued",
+            message=integration_name + ": " + type(error).__name__,
+        )
 
 
 def cancel_provider_order(integration_name):

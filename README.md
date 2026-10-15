@@ -51,7 +51,9 @@ until a Flutterwave test key proves it. An expired or failed Pesapal order is
 cancelled once with the documented `Transactions/CancelOrder` endpoint, queued
 after the database commit so the request rows are not locked during the provider
 timeouts (best effort; local expiry does not depend on it). If the queue is down,
-the failure is logged and polling continues. Before the call, the job records
+the failure is recorded in the Error Log (title `PAY-012 provider cancel not queued`;
+the message is the Integration Request name and the exception type only, never the
+exception text) and polling continues. Before the call, the job records
 `provider_cancel_sent` in the Integration Request's data, so a replayed or
 re-enqueued job sends nothing: at most one CancelOrder per order, even if that
 one call fails.
