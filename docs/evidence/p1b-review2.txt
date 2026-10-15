@@ -1,0 +1,22 @@
+P1b review-2 bench evidence (Grok CHANGES REQUESTED on #2)
+
+Bench: frappe/erpnext:v16.50.0 (Frappe 16.52.0), payments cca07d9, site p1b.localhost,
+compose project ea-p1b2-epottr, published only on 127.0.0.1:19395, torn down with down -v.
+Provider HTTP stubbed with documented Pesapal API 3.0 shapes (status_code 0 INVALID sparse body,
+1 COMPLETED, CancelOrder {"status":"200","message":"Ok"}). Payment Requests are created with ERPNext's
+native make_payment_request (Phone channel, Pesapal Payment Gateway Account) on a submitted Sales Invoice.
+
+Before: ACC-PRQ-2026-00001 Requested (order aged to 61 minutes).            -> r2-01-request-requested.png
+Scheduler poll:
+EXPIRED ACC-PRQ-2026-00001 docstatus=2 Cancelled failed_reason="PAY-006: Checkout expired without payment."
+        Integration Request TRACK-ACC-PRQ-2026-00001 Failed (same reason)   -> r2-02-expired-request-natively-cancelled.png
+PROVIDER_CANCEL Transactions/CancelOrder {"order_tracking_id": "TRACK-ACC-PRQ-2026-00001"} (once)
+New phone request for the same invoice:
+SECOND_REQUEST ACC-PRQ-2026-00002 docstatus=1 Requested 12000 ACC-SINV-2026-00001 -> r2-03-new-phone-request-same-invoice.png
+Guest then pays the expired checkout (provider COMPLETED):
+LATE TRACK-ACC-PRQ-2026-00001 Completed, output allocation=Unallocated code=PAY-011 -> r2-04-late-success-unallocated.png
+STATUSES ACC-PRQ-2026-00001 Cancelled, ACC-PRQ-2026-00002 Requested (not paid by the late receipt)
+PAY-011 Notification Log for each enabled Accounts Manager (Administrator, accounts.p1b@example.test):
+"PAY-011: Phone payment received for cancelled Payment Request ACC-PRQ-2026-00001 (12000 UGX,
+provider reference TRACK-ACC-PRQ-2026-00001). Refund or allocate it."           -> r2-05-pay-011-accounts-manager.png
+MONEY Payment Entry 0 -> 0, GL Entry 2 -> 2 (only the invoice's own GL rows).
