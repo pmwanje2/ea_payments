@@ -449,8 +449,10 @@ class TestGateways(unittest.TestCase):
         self.ipn(integration)
         self.ipn(integration)
         logs = frappe.get_all("Notification Log", filters={"document_name": self.pr.name,
-                                                            "title": ["like", "PAY-011%"]})
-        self.assertEqual(len(logs), 1)
+                                                            "title": ["like", "PAY-011%"]}, fields=["for_user"])
+        managers = frappe.get_all("Has Role", filters={"role": "Accounts Manager", "parenttype": "User"}, pluck="parent")
+        enabled = frappe.get_all("User", filters={"enabled": 1, "name": ["in", managers]}, pluck="name")
+        self.assertCountEqual([row.for_user for row in logs], enabled)
 
     def test_poller_detects_late_success_for_native_cancelled_and_failed_integrations(self):
         for provider in ("Pesapal", "Flutterwave"):
