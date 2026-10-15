@@ -578,6 +578,22 @@ class TestGateways(unittest.TestCase):
                 self.common.poll_queued()
             self.assert_unpaid("PAY-006", integration, "Failed")
 
+    def test_invalid_expiry_configuration_uses_60_minutes_without_stopping_poller(self):
+        self.provider_status = "pending"
+        for value in ("not-minutes", -5):
+            with self.subTest(value=value), patch.dict(frappe.conf, {"ea_payments_expiry_minutes": value}):
+                self.pr = self.make_pr()
+                _, integration, _ = self.order()
+                integration.db_set("creation", now_datetime() - timedelta(minutes=30))
+                try:
+                    self.common.poll_queued()
+                except (TypeError, ValueError) as error:
+                    self.fail("Invalid expiry configuration stopped the poller: " + type(error).__name__)
+                self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+                integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+                self.common.poll_queued()
+                self.assert_unpaid("PAY-006", integration, "Failed")
+
     def test_expired_flutterwave_pending_or_new_order_fails(self):
         for status in ("pending", "new"):
             with self.subTest(status=status):
