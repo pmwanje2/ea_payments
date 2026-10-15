@@ -6,7 +6,7 @@ import frappe
 import requests
 from frappe.core.doctype.sms_settings.sms_settings import send_sms
 from frappe.model.document import Document
-from frappe.utils import call_hook_method, now_datetime
+from frappe.utils import call_hook_method, escape_html, get_datetime, now_datetime
 from payments.utils import create_payment_gateway
 
 
@@ -118,10 +118,28 @@ def settle(integration, verified):
         return refuse("PAY-003", integration)
     pr = frappe.get_doc("Payment Request", name, for_update=True)
     integration = frappe.get_doc("Integration Request", integration.name, for_update=True)
-    if (pr.docstatus != 1 or pr.payment_request_type != "Inward"
+    if (pr.docstatus not in (1, 2) or pr.payment_request_type != "Inward"
             or pr.payment_gateway != integration.integration_request_service
-            or verified.get("reference") != pr.name):
+            or (verified.get("reference") != pr.name and not (
+                verified.get("reference") is None and (verified.get("pending") or verified.get("failed"))))):
         return refuse("PAY-003", integration)
+    if verified.get("pending") or verified.get("failed"):
+        if integration.status == "Completed":
+            return {"status": "Completed"}
+        expiry = max(1, int(frappe.conf.get("ea_payments_expiry_minutes") or 60))
+        expired = now_datetime() > get_datetime(integration.creation) + timedelta(minutes=expiry)
+        if verified.get("failed") or expired:
+            reason = ("PAY-006: Checkout expired without payment." if expired and verified.get("pending")
+                      else "PAY-006: Provider reported a failed, reversed or cancelled payment.")
+            integration.db_set({"status": "Failed", "error": reason})
+            if pr.docstatus == 1 and pr.status in ("Requested", "Initiated"):
+                # v16 Payment Request uses Document.db_set for status transitions;
+                # there is no native set_failed method.
+                pr.db_set({"status": "Failed", "failed_reason": reason})
+            return {"status": "Failed", "code": "PAY-006", "message": reason}
+        if pr.docstatus == 2:
+            return refuse("PAY-003", integration)
+        return {"status": "Queued"}
     if verified.get("currency") != "UGX" or pr.currency != "UGX":
         return refuse("PAY-002", integration)
     try:
@@ -130,10 +148,10 @@ def settle(integration, verified):
             return refuse("PAY-001", integration)
     except frappe.ValidationError:
         return refuse("PAY-001", integration)
-    if verified.get("pending"):
-        return {"status": "Queued"}
     if not verified.get("success"):
         return refuse("PAY-006", integration)
+    if pr.docstatus == 2 or pr.status in ("Cancelled", "Failed"):
+        return unallocated(pr, integration, verified, amount)
     integration.db_set({"status": "Completed", "error": "", "output": frappe.as_json({
         "amount": amount, "currency": "UGX", "reference": pr.name, "status": "Completed"})})
     if pr.status != "Paid":
@@ -146,6 +164,26 @@ def settle(integration, verified):
                 docname=pr.reference_name, user=pr.owner, after_commit=True,
                 message={"amount": amount, "success": True, "failure_message": ""})
     return {"status": "Completed"}
+
+
+def unallocated(pr, integration, verified, amount):
+    """Native audit + Accounts alert only. Never authorize, post or refund money."""
+    reference = str(verified.get("provider_reference") or integration.name)
+    integration.db_set({"status": "Completed", "error": "", "output": frappe.as_json({
+        "status": "Completed - Unallocated", "allocation": "Unallocated", "code": "PAY-011",
+        "amount": amount, "currency": "UGX", "reference": pr.name, "provider_reference": reference})})
+    state = "cancelled" if pr.docstatus == 2 or pr.status == "Cancelled" else "failed"
+    message = (f"PAY-011: Phone payment received for {state} Payment Request {pr.name} "
+               f"({amount} UGX, provider reference {reference}). Refund or allocate it.")
+    managers = frappe.get_all("Has Role", filters={"role": "Accounts Manager", "parenttype": "User"}, pluck="parent")
+    for user in frappe.get_all("User", filters={"enabled": 1, "name": ["in", managers]}, pluck="name"):
+        key = {"for_user": user, "document_type": "Payment Request", "document_name": pr.name,
+               "source_doctype": "Integration Request", "source_name": integration.name}
+        if not frappe.db.exists("Notification Log", key):
+            frappe.get_doc({"doctype": "Notification Log", **key,
+                            "title": "PAY-011: Unallocated phone payment",
+                            "description": escape_html(message)}).insert(ignore_permissions=True)
+    return {"status": "Completed", "allocation": "Unallocated"}
 
 
 def reverify(name, provider):
@@ -169,7 +207,10 @@ def reverify(name, provider):
 def poll_queued():
     for row in frappe.get_all("Integration Request", filters={
         "integration_request_service": ["in", ["Pesapal", "Flutterwave"]],
-        "status": "Queued", "creation": [">", now_datetime() - timedelta(hours=24)],
-    }, fields=["name", "integration_request_service"]):
+        "status": ["in", ["Queued", "Failed", "Cancelled"]],
+    }, fields=["name", "integration_request_service", "reference_docname", "status"]):
+        if row.status != "Queued" and frappe.db.get_value(
+                "Payment Request", row.reference_docname, "status") not in ("Failed", "Cancelled"):
+            continue
         reverify(row.name, row.integration_request_service)
         frappe.db.commit()

@@ -32,8 +32,10 @@ class FlutterwaveSettings(GatewaySettings):
         status = response.get("data") or {}
         return {"success": status.get("status") == "successful",
                 "pending": status.get("status") in ("pending", "new"),
+                "failed": status.get("status") in ("failed", "cancelled"),
                 "amount": status.get("amount"), "currency": status.get("currency"),
-                "reference": status.get("tx_ref")}
+                "reference": status.get("tx_ref"),
+                "provider_reference": status.get("flw_ref") or status.get("id")}
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
