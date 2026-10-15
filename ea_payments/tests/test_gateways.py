@@ -27,6 +27,7 @@ class TestGateways(unittest.TestCase):
         self.provider_currency = "UGX"
         self.provider_reference = None
         self.provider_status = "success"
+        self.sparse_unpaid = False
         self.pr = self.make_pr()
         self.http_patch = patch("requests.request", side_effect=self.http)
         self.http_patch.start()
@@ -104,6 +105,9 @@ class TestGateways(unittest.TestCase):
                         "error": error, "status": "200", "token": "must-not-store"}
             if code == 0:
                 response["status"] = "500"  # as returned by cybqa for an unpaid order
+            if self.sparse_unpaid and code in (0, 2, 3):
+                response.update(amount=0.0, currency=None, merchant_reference=None,
+                                created_date=None, payment_method="", confirmation_code="")
             if code is None:
                 response = {"error": {"error_type": "api_error", "code": "invalid_api_auth",
                                       "message": "Unauthorized"}, "status": "500"}
@@ -114,6 +118,9 @@ class TestGateways(unittest.TestCase):
                 "id": 42001, "status": "successful" if self.provider_status == "success" else self.provider_status,
                 "amount": self.provider_amount, "currency": self.provider_currency,
                 "tx_ref": self.provider_reference or kwargs.get("params", {}).get("tx_ref", self.pr.name),
+                "flw_ref": "FLW-MOCK-42001", "charged_amount": self.provider_amount,
+                "app_fee": 360, "merchant_fee": 0, "processor_response": "Approved",
+                "payment_type": "mobilemoneyuganda", "created_at": "2026-10-15T10:00:00Z",
                 "secret": "must-not-store",
             }}
         else:
@@ -142,8 +149,8 @@ class TestGateways(unittest.TestCase):
             method="POST", json=body, headers={"verif-hash": signature}).get_environ()), create=True):
             return self.flutterwave.webhook()
 
-    def assert_unpaid(self, code, integration):
-        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+    def assert_unpaid(self, code, integration, status="Requested"):
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), status)
         integration.reload()
         self.assertEqual(integration.status, "Failed")
         self.assertIn(code, integration.error)
@@ -244,7 +251,7 @@ class TestGateways(unittest.TestCase):
     def test_pesapal_ipn_never_trusts_callback_status_amount_or_currency(self):
         self.provider_status = "FAILED"
         self.ipn(status_code=1, amount=12000, currency="UGX")
-        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
 
     def test_pesapal_completed_status_with_real_error_object_settles(self):
         result = self.ipn()
@@ -269,7 +276,7 @@ class TestGateways(unittest.TestCase):
                 _, integration, _ = self.order()
                 self.provider_status = status
                 self.ipn(integration)
-                self.assert_unpaid("PAY-006", integration)
+                self.assert_unpaid("PAY-006", integration, "Failed")
 
     def test_pesapal_status_auth_error_without_status_code_is_pay_006(self):
         _, integration, _ = self.order()
@@ -302,7 +309,7 @@ class TestGateways(unittest.TestCase):
     def test_flutterwave_failed_status_cannot_be_overridden_by_body(self):
         self.provider_status = "failed"
         self.webhook(amount=12000, currency="UGX", status="successful")
-        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Failed")
 
     def test_pay_001_amount_mismatch_is_audited_and_not_paid(self):
         _, integration, _ = self.order()
@@ -419,7 +426,7 @@ class TestGateways(unittest.TestCase):
         self.assertTrue(kwargs["message"]["success"])
         self.assertEqual(kwargs["message"]["amount"], 12000)
 
-    def test_poller_settles_only_recent_queued_gateway_requests(self):
+    def test_poller_does_not_abandon_gateway_requests_after_24_hours(self):
         _, integration, _ = self.order()
         old = self.make_pr()
         _, old_ir, _ = self.order(pr=old)
@@ -428,8 +435,87 @@ class TestGateways(unittest.TestCase):
                                "status": "Queued", "data": "{}"}).insert(ignore_permissions=True)
         self.common.poll_queued()
         self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Paid")
-        self.assertEqual(frappe.db.get_value("Payment Request", old.name, "status"), "Requested")
+        self.assertEqual(frappe.db.get_value("Payment Request", old.name, "status"), "Paid")
         self.assertEqual(frappe.db.get_value("Integration Request", other.name, "status"), "Queued")
+
+    def test_poller_fails_terminal_unpaid_orders_including_sparse_pesapal_responses(self):
+        for provider, statuses in (("Pesapal", ("FAILED", "REVERSED")),
+                                   ("Flutterwave", ("failed", "cancelled"))):
+            for status in statuses:
+                with self.subTest(provider=provider, status=status):
+                    self.pr = self.make_pr(provider=provider)
+                    _, integration, _ = self.order(provider)
+                    self.provider_status = status
+                    self.sparse_unpaid = True
+                    self.common.poll_queued()
+                    self.assert_unpaid("PAY-006", integration, "Failed")
+                    self.assertIn("PAY-006", frappe.db.get_value("Payment Request", self.pr.name, "failed_reason"))
+
+    def test_default_expiry_fails_sparse_invalid_pesapal_order_after_60_minutes(self):
+        _, integration, _ = self.order()
+        self.provider_status = "pending"
+        self.sparse_unpaid = True
+        integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+        self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration, "Failed")
+        self.assertIn("expired", (integration.error or "").lower())
+
+    def test_young_sparse_invalid_pesapal_order_remains_open(self):
+        _, integration, _ = self.order()
+        self.provider_status = "pending"
+        self.sparse_unpaid = True
+        integration.db_set("creation", now_datetime() - timedelta(minutes=59))
+        self.common.poll_queued()
+        self.assertEqual(frappe.db.get_value("Integration Request", integration.name, "status"), "Queued")
+        self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+
+    def test_configurable_expiry_uses_provider_order_age_and_boundary(self):
+        _, integration, _ = self.order()
+        self.provider_status = "pending"
+        created = now_datetime()
+        integration.db_set("creation", created)
+        self.pr.db_set("creation", created - timedelta(days=2))
+        with patch.dict(frappe.conf, {"ea_payments_expiry_minutes": 90}):
+            with patch.object(self.common, "now_datetime", return_value=created + timedelta(minutes=90)):
+                self.common.poll_queued()
+            self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), "Requested")
+            with patch.object(self.common, "now_datetime", return_value=created + timedelta(minutes=91)):
+                self.common.poll_queued()
+            self.assert_unpaid("PAY-006", integration, "Failed")
+
+    def test_expired_flutterwave_pending_or_new_order_fails(self):
+        for status in ("pending", "new"):
+            with self.subTest(status=status):
+                self.pr = self.make_pr(provider="Flutterwave")
+                _, integration, _ = self.order("Flutterwave")
+                integration.db_set("creation", now_datetime() - timedelta(minutes=61))
+                self.provider_status = status
+                self.common.poll_queued()
+                self.assert_unpaid("PAY-006", integration, "Failed")
+
+    def test_expired_provider_outage_does_not_claim_payment_failed(self):
+        _, integration, _ = self.order()
+        integration.db_set("creation", now_datetime() - timedelta(hours=25))
+        self.http_error = True
+        self.common.poll_queued()
+        self.assert_unpaid("PAY-006", integration)
+
+    def test_terminal_failure_never_downgrades_paid_or_cancelled_request(self):
+        for status, docstatus in (("Paid", 1), ("Cancelled", 2)):
+            with self.subTest(status=status):
+                self.pr = self.make_pr()
+                _, integration, _ = self.order()
+                self.pr.db_set({"status": status, "docstatus": docstatus})
+                self.provider_status = "FAILED"
+                self.common.reverify(integration.name, "Pesapal")
+                self.assertEqual(frappe.db.get_value("Payment Request", self.pr.name, "status"), status)
+
+    def test_failed_provider_foreign_reference_does_not_release_open_request(self):
+        _, integration, _ = self.order()
+        self.provider_status = "FAILED"
+        self.provider_reference = "ANOTHER-PR"
+        self.ipn(integration)
+        self.assert_unpaid("PAY-003", integration)
 
     def test_ipn_poller_race_uses_real_row_lock_and_settles_once(self):
         _, integration, _ = self.order()
